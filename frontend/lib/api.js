@@ -58,6 +58,14 @@ export const api = {
     }),
 
   getCart: (cartId) => request(`/api/cart/${cartId}`),
+
+  sendChatMessage: (sessionId, message) =>
+    request("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, message }),
+    }),
+
+  getChatHistory: (sessionId) => request(`/api/chat/${sessionId}/history`),
 };
 
 export { ApiError, API_BASE_URL };

@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -36,9 +39,14 @@ export default async function HomePage() {
         <span className="text-sm font-medium text-muted-foreground">
           Sellsy AI — Foundation Check
         </span>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Frontend ↔ Backend Connectivity
-        </h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Frontend ↔ Backend Connectivity
+          </h1>
+          <Button asChild size="sm">
+            <Link href="/chat">Open chat →</Link>
+          </Button>
+        </div>
         <p className="text-muted-foreground">
           This page calls the FastAPI backend directly from a Next.js server
           component to confirm the two services can talk to each other.
