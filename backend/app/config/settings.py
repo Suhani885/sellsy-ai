@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # --- Future: AI provider (not wired up yet in this phase) ---
     ai_provider: str = "groq"
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-120b"
 
     # --- Future: Razorpay (not wired up yet in this phase) ---
     razorpay_key_id: str = ""

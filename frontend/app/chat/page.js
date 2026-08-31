@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProductCard } from "@/components/product-card";
 import { api, ApiError } from "@/lib/api";
+import { ensureCart } from "@/lib/cart";
 import { getOrCreateSessionId } from "@/lib/session";
 
 const WELCOME_MESSAGE = {
@@ -19,14 +21,23 @@ const WELCOME_MESSAGE = {
 
 export default function ChatPage() {
   const [sessionId, setSessionId] = useState(null);
+  const [cart, setCart] = useState(null);
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState(null);
+  // Tracks per-product "adding..." / "added" UI state, keyed by product id.
+  const [cartActionState, setCartActionState] = useState({});
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    setSessionId(getOrCreateSessionId());
+    const sid = getOrCreateSessionId();
+    setSessionId(sid);
+    ensureCart(sid)
+      .then(setCart)
+      .catch(() => {
+        /* cart will be created lazily on first add-to-cart attempt */
+      });
   }, []);
 
   useEffect(() => {
@@ -65,20 +76,50 @@ export default function ChatPage() {
     }
   }
 
+  async function handleAddToCart(product, addedReason) {
+    setCartActionState((prev) => ({ ...prev, [product.id]: "adding" }));
+    try {
+      const activeCart = cart ?? (await ensureCart(sessionId));
+      const updatedCart = await api.addCartItem(activeCart.id, {
+        productId: product.id,
+        addedReason,
+      });
+      setCart(updatedCart);
+      setCartActionState((prev) => ({ ...prev, [product.id]: "added" }));
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Could not add that to your cart.";
+      setError(message);
+      setCartActionState((prev) => ({ ...prev, [product.id]: null }));
+    }
+  }
+
+  const itemCount = cart?.items?.length ?? 0;
+
   return (
     <main className="mx-auto flex h-screen w-full max-w-2xl flex-col px-4 py-6">
-      <div className="mb-4 flex flex-col gap-1">
-        <span className="text-sm font-medium text-muted-foreground">
-          Sellsy AI
-        </span>
-        <h1 className="text-xl font-semibold tracking-tight">
-          Shopping Assistant
-        </h1>
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-muted-foreground">
+            Sellsy AI
+          </span>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Shopping Assistant
+          </h1>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/cart">Cart {itemCount > 0 ? `(${itemCount})` : ""}</Link>
+        </Button>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto rounded-lg border bg-muted/20 p-4">
         {messages.map((msg, i) => (
-          <ChatBubble key={i} message={msg} />
+          <ChatBubble
+            key={i}
+            message={msg}
+            cartActionState={cartActionState}
+            onAddToCart={handleAddToCart}
+          />
         ))}
 
         {isSending && (
@@ -113,7 +154,31 @@ export default function ChatPage() {
   );
 }
 
-function ChatBubble({ message }) {
+function AddToCartButton({ product, reason, cartActionState, onAddToCart }) {
+  const state = cartActionState[product.id];
+
+  if (state === "added") {
+    return (
+      <Button size="sm" variant="secondary" disabled className="w-full">
+        Added to cart ✓
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="w-full"
+      disabled={state === "adding" || product.inventory <= 0}
+      onClick={() => onAddToCart(product, reason)}
+    >
+      {state === "adding" ? "Adding…" : "Add to cart"}
+    </Button>
+  );
+}
+
+function ChatBubble({ message, cartActionState, onAddToCart }) {
   const isUser = message.role === "user";
 
   return (
@@ -132,7 +197,18 @@ function ChatBubble({ message }) {
         {message.recommended_products?.length > 0 && (
           <div className="flex w-full flex-col gap-2">
             {message.recommended_products.map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard
+                key={product.id}
+                product={product}
+                footer={
+                  <AddToCartButton
+                    product={product}
+                    reason="user_selected"
+                    cartActionState={cartActionState}
+                    onAddToCart={onAddToCart}
+                  />
+                }
+              />
             ))}
           </div>
         )}
@@ -144,7 +220,17 @@ function ChatBubble({ message }) {
                 Suggested add-on
               </Badge>
             </div>
-            <ProductCard product={message.upsell.product} />
+            <ProductCard
+              product={message.upsell.product}
+              footer={
+                <AddToCartButton
+                  product={message.upsell.product}
+                  reason="upsell_accepted"
+                  cartActionState={cartActionState}
+                  onAddToCart={onAddToCart}
+                />
+              }
+            />
             <p className="text-xs text-muted-foreground">
               {message.upsell.reasoning}
             </p>

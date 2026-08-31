@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 
-export function ProductCard({ product }) {
+export function ProductCard({ product, footer }) {
   return (
     <div className="flex flex-col gap-1 rounded-lg border bg-card p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
@@ -22,6 +22,7 @@ export function ProductCard({ product }) {
           ? `${product.inventory} in stock`
           : "Out of stock"}
       </p>
+      {footer && <div className="mt-2">{footer}</div>}
     </div>
   );
 }
