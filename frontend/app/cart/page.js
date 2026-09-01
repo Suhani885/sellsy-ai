@@ -15,6 +15,11 @@ export default function CartPage() {
   const [error, setError] = useState(null);
   const [removingId, setRemovingId] = useState(null);
 
+  const [proposal, setProposal] = useState(null);
+  const [isProposing, setIsProposing] = useState(false);
+  const [isDeciding, setIsDeciding] = useState(false);
+  const [proposalError, setProposalError] = useState(null);
+
   useEffect(() => {
     const cartId = getStoredCartId();
     if (!cartId) {
@@ -37,10 +42,55 @@ export default function CartPage() {
     try {
       const updated = await api.removeCartItem(cart.id, itemId);
       setCart(updated);
+      setProposal(null); // cart changed — any existing proposal is stale
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not remove that item.");
     } finally {
       setRemovingId(null);
+    }
+  }
+
+  async function handleProposePayment() {
+    if (!cart) return;
+    setIsProposing(true);
+    setProposalError(null);
+    try {
+      const newProposal = await api.proposePayment(cart.id);
+      setProposal(newProposal);
+    } catch (err) {
+      setProposalError(
+        err instanceof ApiError ? err.message : "Could not create a payment proposal."
+      );
+    } finally {
+      setIsProposing(false);
+    }
+  }
+
+  async function handleApprove() {
+    if (!proposal) return;
+    setIsDeciding(true);
+    setProposalError(null);
+    try {
+      const updated = await api.approvePayment(proposal.id);
+      setProposal(updated);
+    } catch (err) {
+      setProposalError(err instanceof ApiError ? err.message : "Could not approve payment.");
+    } finally {
+      setIsDeciding(false);
+    }
+  }
+
+  async function handleReject() {
+    if (!proposal) return;
+    setIsDeciding(true);
+    setProposalError(null);
+    try {
+      const updated = await api.rejectPayment(proposal.id);
+      setProposal(updated);
+    } catch (err) {
+      setProposalError(err instanceof ApiError ? err.message : "Could not cancel payment.");
+    } finally {
+      setIsDeciding(false);
     }
   }
 
@@ -114,7 +164,7 @@ export default function CartPage() {
                       size="sm"
                       variant="ghost"
                       className="text-destructive hover:text-destructive"
-                      disabled={removingId === item.id}
+                      disabled={removingId === item.id || Boolean(proposal)}
                       onClick={() => handleRemove(item.id)}
                     >
                       {removingId === item.id ? "Removing…" : "Remove"}
@@ -134,14 +184,80 @@ export default function CartPage() {
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">
-              Checkout isn't wired up yet — this total is calculated
-              server-side from live product prices, ready for the payment
-              phase.
+            <CardContent className="flex flex-col gap-3">
+              {!proposal && (
+                <Button onClick={handleProposePayment} disabled={isProposing}>
+                  {isProposing ? "Checking order…" : "Proceed to Payment"}
+                </Button>
+              )}
+              {proposalError && (
+                <p className="text-sm text-destructive">{proposalError}</p>
+              )}
             </CardContent>
           </Card>
+
+          {proposal && <PaymentApprovalCard
+            proposal={proposal}
+            isDeciding={isDeciding}
+            onApprove={handleApprove}
+            onReject={handleReject}
+          />}
         </>
       )}
     </main>
   );
+}
+
+function PaymentApprovalCard({ proposal, isDeciding, onApprove, onReject }) {
+  return (
+    <Card className="border-primary/30">
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-base">
+          <span>Payment Proposal</span>
+          <StatusBadge status={proposal.status} />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <pre className="whitespace-pre-wrap rounded-md bg-muted/40 p-3 font-sans text-sm">
+          {proposal.reasoning}
+        </pre>
+
+        {proposal.status === "proposed" && (
+          <div className="flex gap-2">
+            <Button onClick={onApprove} disabled={isDeciding} className="flex-1">
+              {isDeciding ? "Processing…" : "Approve Payment"}
+            </Button>
+            <Button
+              onClick={onReject}
+              disabled={isDeciding}
+              variant="outline"
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {proposal.status === "approved" && (
+          <p className="text-sm text-muted-foreground">
+            Payment approved. Razorpay checkout will be wired up in the next
+            phase — no charge has been made yet.
+          </p>
+        )}
+
+        {proposal.status === "rejected" && (
+          <p className="text-sm text-muted-foreground">
+            Payment cancelled. Your cart is unchanged — you can adjust items
+            and propose again.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusBadge({ status }) {
+  const variant =
+    status === "approved" ? "default" : status === "rejected" ? "destructive" : "secondary";
+  return <Badge variant={variant}>{status}</Badge>;
 }

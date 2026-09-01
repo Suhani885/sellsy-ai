@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""
 
+    # --- Guardrail / policy engine ---
+    # Safety ceiling for a single transaction, in rupees. Proposals above
+    # this are rejected outright rather than shown to the user. Tune this
+    # for your demo — it exists so a hallucinated or manipulated cart can
+    # never silently become a large real charge.
+    max_transaction_amount_inr: float = 200000.0
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property
