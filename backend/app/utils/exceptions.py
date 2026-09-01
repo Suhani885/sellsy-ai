@@ -50,6 +50,11 @@ class ConflictError(AppException):
     error_code = "CONFLICT"
 
 
+class PaymentVerificationError(AppException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_code = "PAYMENT_VERIFICATION_FAILED"
+
+
 def _error_body(code: str, message: str) -> dict:
     return {"error": {"code": code, "message": message}}
 

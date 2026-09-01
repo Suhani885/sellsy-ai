@@ -7,3 +7,4 @@ from app.models.product import Product  # noqa: F401
 from app.models.cart import Cart, CartItem  # noqa: F401
 from app.models.conversation import ConversationMessage  # noqa: F401
 from app.models.payment import PaymentProposal  # noqa: F401
+from app.models.transaction import Payment  # noqa: F401

@@ -84,6 +84,16 @@ export const api = {
   rejectPayment: (proposalId) =>
     request(`/api/payment/${proposalId}/reject`, { method: "POST" }),
 
+  verifyPayment: (proposalId, { razorpayOrderId, razorpayPaymentId, razorpaySignature }) =>
+    request(`/api/payment/${proposalId}/verify`, {
+      method: "POST",
+      body: JSON.stringify({
+        razorpay_order_id: razorpayOrderId,
+        razorpay_payment_id: razorpayPaymentId,
+        razorpay_signature: razorpaySignature,
+      }),
+    }),
+
   sendChatMessage: (sessionId, message) =>
     request("/api/chat", {
       method: "POST",
