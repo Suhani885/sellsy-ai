@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ProductCard } from "@/components/product-card";
+import { ShelfCard, ShelfRow } from "@/components/shelf-card";
+import { Wordmark } from "@/components/wordmark";
 import { api, ApiError } from "@/lib/api";
 import { ensureCart } from "@/lib/cart";
 import { getOrCreateSessionId } from "@/lib/session";
@@ -14,44 +15,58 @@ import { getOrCreateSessionId } from "@/lib/session";
 const WELCOME_MESSAGE = {
   role: "agent",
   content:
-    "Hi! I'm the Sellsy AI shopping assistant. Tell me what you're looking for — e.g. \"I need a laptop for college under ₹50,000\" — and I'll find some options.",
+    "Hi, I'm here to help you find something. Tell me what you're looking for — a budget, an occasion, anything specific in mind — and I'll pull real options from stock.",
   recommended_products: [],
   upsell: null,
 };
 
 export default function ChatPage() {
+  return (
+    <Suspense>
+      <ChatPageInner />
+    </Suspense>
+  );
+}
+
+function ChatPageInner() {
+  const searchParams = useSearchParams();
   const [sessionId, setSessionId] = useState(null);
   const [cart, setCart] = useState(null);
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState(null);
-  // Tracks per-product "adding..." / "added" UI state, keyed by product id.
   const [cartActionState, setCartActionState] = useState({});
   const scrollRef = useRef(null);
+  const hasAutoSent = useRef(false);
 
   useEffect(() => {
     const sid = getOrCreateSessionId();
     setSessionId(sid);
     ensureCart(sid)
       .then(setCart)
-      .catch(() => {
-        /* cart will be created lazily on first add-to-cart attempt */
-      });
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const initialQuery = searchParams.get("q");
+    if (initialQuery && sessionId && !hasAutoSent.current) {
+      hasAutoSent.current = true;
+      sendMessage(initialQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isSending || !sessionId) return;
+  async function sendMessage(text) {
+    const trimmed = text.trim();
+    if (!trimmed || !sessionId) return;
 
     setError(null);
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
-    setInput("");
     setIsSending(true);
 
     try {
@@ -66,14 +81,20 @@ export default function ChatPage() {
         },
       ]);
     } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : "Something went wrong talking to the assistant.";
-      setError(message);
+      setError(
+        err instanceof ApiError ? err.message : "Something went wrong reaching the assistant."
+      );
     } finally {
       setIsSending(false);
     }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (isSending) return;
+    const text = input;
+    setInput("");
+    await sendMessage(text);
   }
 
   async function handleAddToCart(product, addedReason) {
@@ -87,9 +108,7 @@ export default function ChatPage() {
       setCart(updatedCart);
       setCartActionState((prev) => ({ ...prev, [product.id]: "added" }));
     } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Could not add that to your cart.";
-      setError(message);
+      setError(err instanceof ApiError ? err.message : "Could not add that to your cart.");
       setCartActionState((prev) => ({ ...prev, [product.id]: null }));
     }
   }
@@ -97,24 +116,19 @@ export default function ChatPage() {
   const itemCount = cart?.items?.length ?? 0;
 
   return (
-    <main className="mx-auto flex h-screen w-full max-w-2xl flex-col px-4 py-6">
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-muted-foreground">
-            Sellsy AI
-          </span>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Shopping Assistant
-          </h1>
-        </div>
+    <main className="mx-auto flex h-screen w-full max-w-2xl flex-col px-4 py-5">
+      <header className="mb-4 flex items-center justify-between border-b border-border pb-4">
+        <Link href="/">
+          <Wordmark />
+        </Link>
         <Button asChild variant="outline" size="sm">
-          <Link href="/cart">Cart {itemCount > 0 ? `(${itemCount})` : ""}</Link>
+          <Link href="/cart">Cart{itemCount > 0 ? ` (${itemCount})` : ""}</Link>
         </Button>
-      </div>
+      </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto rounded-lg border bg-muted/20 p-4">
+      <div className="flex-1 space-y-5 overflow-y-auto pb-4">
         {messages.map((msg, i) => (
-          <ChatBubble
+          <ChatTurn
             key={i}
             message={msg}
             cartActionState={cartActionState}
@@ -122,16 +136,10 @@ export default function ChatPage() {
           />
         ))}
 
-        {isSending && (
-          <div className="flex justify-start">
-            <div className="rounded-lg bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm">
-              Thinking…
-            </div>
-          </div>
-        )}
+        {isSending && <p className="text-sm text-muted-foreground">Looking that up…</p>}
 
         {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {error}
           </div>
         )}
@@ -139,11 +147,11 @@ export default function ChatPage() {
         <div ref={scrollRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
+      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-border pt-4">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about laptops, phones, headphones…"
+          placeholder="What are you looking for?"
           disabled={isSending || !sessionId}
         />
         <Button type="submit" disabled={isSending || !input.trim() || !sessionId}>
@@ -160,7 +168,7 @@ function AddToCartButton({ product, reason, cartActionState, onAddToCart }) {
   if (state === "added") {
     return (
       <Button size="sm" variant="secondary" disabled className="w-full">
-        Added to cart ✓
+        Added ✓
       </Button>
     );
   }
@@ -178,65 +186,55 @@ function AddToCartButton({ product, reason, cartActionState, onAddToCart }) {
   );
 }
 
-function ChatBubble({ message, cartActionState, onAddToCart }) {
-  const isUser = message.role === "user";
+function ChatTurn({ message, cartActionState, onAddToCart }) {
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <p className="max-w-[80%] text-right text-sm">{message.content}</p>
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`flex max-w-[85%] flex-col gap-2 ${isUser ? "items-end" : "items-start"}`}>
-        <div
-          className={`rounded-lg px-3 py-2 text-sm shadow-sm ${
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-card text-card-foreground"
-          }`}
-        >
-          {message.content}
-        </div>
+    <div className="flex flex-col gap-3 border-l-2 border-primary/40 pl-3">
+      <p className="text-sm leading-relaxed">{message.content}</p>
 
-        {message.recommended_products?.length > 0 && (
-          <div className="flex w-full flex-col gap-2">
-            {message.recommended_products.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                footer={
-                  <AddToCartButton
-                    product={product}
-                    reason="user_selected"
-                    cartActionState={cartActionState}
-                    onAddToCart={onAddToCart}
-                  />
-                }
-              />
-            ))}
-          </div>
-        )}
-
-        {message.upsell && (
-          <div className="flex w-full flex-col gap-1 rounded-lg border border-dashed p-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px]">
-                Suggested add-on
-              </Badge>
-            </div>
-            <ProductCard
-              product={message.upsell.product}
+      {message.recommended_products?.length > 0 && (
+        <ShelfRow>
+          {message.recommended_products.map((product) => (
+            <ShelfCard
+              key={product.id}
+              product={product}
               footer={
                 <AddToCartButton
-                  product={message.upsell.product}
-                  reason="upsell_accepted"
+                  product={product}
+                  reason="user_selected"
                   cartActionState={cartActionState}
                   onAddToCart={onAddToCart}
                 />
               }
             />
-            <p className="text-xs text-muted-foreground">
-              {message.upsell.reasoning}
+          ))}
+        </ShelfRow>
+      )}
+
+      {message.upsell && (
+        <div className="flex items-start gap-3 rounded-md bg-accent p-3">
+          <div className="flex-1">
+            <p className="text-sm font-medium">Pairs well: {message.upsell.product.name}</p>
+            <p className="text-sm text-muted-foreground">{message.upsell.reasoning}</p>
+            <p className="mt-1 text-sm font-semibold tabular-nums">
+              ₹{Number(message.upsell.product.price).toLocaleString("en-IN")}
             </p>
           </div>
-        )}
-      </div>
+          <AddToCartButton
+            product={message.upsell.product}
+            reason="upsell_accepted"
+            cartActionState={cartActionState}
+            onAddToCart={onAddToCart}
+          />
+        </div>
+      )}
     </div>
   );
 }

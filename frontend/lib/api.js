@@ -78,6 +78,10 @@ export const api = {
       body: JSON.stringify({ cart_id: cartId }),
     }),
 
+  getPaymentProposal: (proposalId) => request(`/api/payment/${proposalId}`),
+
+  getPaymentTransaction: (proposalId) => request(`/api/payment/${proposalId}/transaction`),
+
   approvePayment: (proposalId) =>
     request(`/api/payment/${proposalId}/approve`, { method: "POST" }),
 

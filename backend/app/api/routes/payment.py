@@ -26,6 +26,12 @@ def get_proposal(proposal_id: int, db: Session = Depends(get_db)):
     return service.get_proposal(proposal_id)
 
 
+@router.get("/{proposal_id}/transaction", response_model=TransactionOut | None)
+def get_latest_transaction(proposal_id: int, db: Session = Depends(get_db)):
+    service = PaymentService(db)
+    return service.get_latest_transaction(proposal_id)
+
+
 @router.post("/{proposal_id}/approve", response_model=ApprovalResult)
 def approve_proposal(proposal_id: int, db: Session = Depends(get_db)):
     service = PaymentService(db)

@@ -57,6 +57,13 @@ class PaymentService:
         proposal = self._get_proposal_or_404(proposal_id)
         return self._proposal_to_out(proposal)
 
+    def get_transaction_for_proposal(self, proposal_id: int) -> TransactionOut | None:
+        self._get_proposal_or_404(proposal_id)  # 404s if the proposal itself doesn't exist
+        payment = self.transaction_repo.get_latest_for_proposal(proposal_id)
+        if payment is None:
+            return None
+        return self._transaction_to_out(payment)
+
     def approve(self, proposal_id: int) -> ApprovalResult:
         proposal = self._get_proposal_or_404(proposal_id)
         self._ensure_pending(proposal)
@@ -133,6 +140,13 @@ class PaymentService:
 
         updated = self.transaction_repo.mark_success(payment, razorpay_payment_id)
         return self._transaction_to_out(updated)
+
+    def get_latest_transaction(self, proposal_id: int) -> TransactionOut | None:
+        self._get_proposal_or_404(proposal_id)  # 404 if the proposal itself doesn't exist
+        payment = self.transaction_repo.get_latest_for_proposal(proposal_id)
+        if payment is None:
+            return None
+        return self._transaction_to_out(payment)
 
     def _get_proposal_or_404(self, proposal_id: int):
         proposal = self.repo.get_by_id(proposal_id)

@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Wordmark } from "@/components/wordmark";
+import { ReceiptDivider, ReceiptRow } from "@/components/receipt";
 import { api, ApiError } from "@/lib/api";
 import { getStoredCartId } from "@/lib/cart";
 import { openRazorpayCheckout } from "@/lib/razorpay";
 
 export default function CartPage() {
+  const router = useRouter();
   const [cart, setCart] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,13 +33,10 @@ export default function CartPage() {
       setIsLoading(false);
       return;
     }
-
     api
       .getCart(cartId)
       .then(setCart)
-      .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "Could not load your cart.");
-      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load your cart."))
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -66,7 +65,7 @@ export default function CartPage() {
       setPayment(null);
     } catch (err) {
       setProposalError(
-        err instanceof ApiError ? err.message : "Could not create a payment proposal."
+        err instanceof ApiError ? err.message : "Could not put this order together."
       );
     } finally {
       setIsProposing(false);
@@ -77,7 +76,6 @@ export default function CartPage() {
     if (!proposal) return;
     setIsDeciding(true);
     setProposalError(null);
-    setPaymentNotice(null);
     try {
       const result = await api.approvePayment(proposal.id);
       setProposal(result.proposal);
@@ -98,7 +96,7 @@ export default function CartPage() {
       const updated = await api.rejectPayment(proposal.id);
       setProposal(updated);
     } catch (err) {
-      setProposalError(err instanceof ApiError ? err.message : "Could not cancel payment.");
+      setProposalError(err instanceof ApiError ? err.message : "Could not cancel.");
     } finally {
       setIsDeciding(false);
     }
@@ -117,22 +115,18 @@ export default function CartPage() {
         name: "Sellsy AI",
         description: `Order for proposal #${proposal.id}`,
       });
-
-      const verified = await api.verifyPayment(proposal.id, result);
-      setPayment(verified);
-      setPaymentNotice({ type: "success", message: "Payment verified successfully!" });
+      await api.verifyPayment(proposal.id, result);
+      router.push(`/order/${proposal.id}`);
     } catch (err) {
       if (err?.dismissed) {
-        setPaymentNotice({
-          type: "info",
-          message: "Payment window closed. You can try again whenever you're ready.",
-        });
+        setPaymentNotice({ type: "info", message: "Payment window closed. You can try again." });
       } else if (err?.paymentFailed) {
         setPaymentNotice({ type: "error", message: `Payment failed: ${err.message}` });
       } else {
-        const message =
-          err instanceof ApiError ? err.message : "Could not verify the payment.";
-        setPaymentNotice({ type: "error", message });
+        setPaymentNotice({
+          type: "error",
+          message: err instanceof ApiError ? err.message : "Could not verify the payment.",
+        });
       }
     } finally {
       setIsPaying(false);
@@ -140,117 +134,98 @@ export default function CartPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-muted-foreground">Sellsy AI</span>
-          <h1 className="text-xl font-semibold tracking-tight">Your Cart</h1>
-        </div>
+    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
+      <header className="flex items-center justify-between">
+        <Link href="/">
+          <Wordmark />
+        </Link>
         <Button asChild variant="outline" size="sm">
-          <Link href="/chat">← Back to chat</Link>
+          <Link href="/chat">← Chat</Link>
         </Button>
-      </div>
+      </header>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading your cart…</p>}
 
       {error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      {!isLoading && !cart && !error && (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            Your cart is empty. Head to the{" "}
-            <Link href="/chat" className="underline">
-              chat assistant
-            </Link>{" "}
-            to find something.
-          </CardContent>
-        </Card>
-      )}
-
-      {cart && cart.items.length === 0 && (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            Your cart is empty.
-          </CardContent>
-        </Card>
+      {!isLoading && (!cart || cart.items.length === 0) && !error && (
+        <p className="text-sm text-muted-foreground">
+          Nothing here yet.{" "}
+          <Link href="/chat" className="underline underline-offset-2">
+            Go find something
+          </Link>
+          .
+        </p>
       )}
 
       {cart && cart.items.length > 0 && (
-        <>
-          <div className="flex flex-col gap-3">
+        <div className="rounded-lg border border-border bg-card p-6">
+          <p className="text-sm text-muted-foreground">Your order</p>
+
+          <div className="mt-2">
             {cart.items.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="flex items-start justify-between gap-4 pt-6">
-                  <div className="flex flex-col gap-1">
-                    <p className="font-medium">{item.product.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Qty {item.quantity} × ₹{item.unit_price.toLocaleString("en-IN")}
-                    </p>
-                    {item.added_reason === "upsell_accepted" && (
-                      <Badge variant="outline" className="w-fit text-[10px]">
-                        Added as suggested add-on
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span className="font-mono text-sm">
-                      ₹{item.line_total.toLocaleString("en-IN")}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive"
-                      disabled={removingId === item.id || Boolean(proposal)}
-                      onClick={() => handleRemove(item.id)}
-                    >
-                      {removingId === item.id ? "Removing…" : "Remove"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <div key={item.id}>
+                <ReceiptRow
+                  label={item.product.name}
+                  sublabel={
+                    item.added_reason === "upsell_accepted"
+                      ? `Qty ${item.quantity} · suggested add-on`
+                      : `Qty ${item.quantity}`
+                  }
+                  value={`₹${item.line_total.toLocaleString("en-IN")}`}
+                />
+                <button
+                  onClick={() => handleRemove(item.id)}
+                  disabled={removingId === item.id || Boolean(proposal)}
+                  className="mb-1 -mt-2 text-xs text-muted-foreground underline underline-offset-2 disabled:opacity-40"
+                >
+                  {removingId === item.id ? "Removing…" : "Remove"}
+                </button>
+              </div>
             ))}
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <span>Total</span>
-                <span className="font-mono">₹{cart.total.toLocaleString("en-IN")}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {!proposal && (
-                <Button onClick={handleProposePayment} disabled={isProposing}>
-                  {isProposing ? "Checking order…" : "Proceed to Payment"}
-                </Button>
-              )}
-              {proposalError && <p className="text-sm text-destructive">{proposalError}</p>}
-            </CardContent>
-          </Card>
+          <ReceiptDivider className="my-1" />
+          <ReceiptRow label="Total" value={`₹${cart.total.toLocaleString("en-IN")}`} emphasis />
 
-          {proposal && (
-            <PaymentApprovalCard
-              proposal={proposal}
-              payment={payment}
-              isDeciding={isDeciding}
-              isPaying={isPaying}
-              paymentNotice={paymentNotice}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              onPayNow={handlePayNow}
-            />
+          {!proposal && (
+            <Button onClick={handleProposePayment} disabled={isProposing} className="mt-4 w-full">
+              {isProposing ? "Putting your order together…" : "Review & pay"}
+            </Button>
           )}
-        </>
+          {proposalError && <p className="mt-2 text-sm text-destructive">{proposalError}</p>}
+        </div>
+      )}
+
+      {proposal && (
+        <PaymentProposalCard
+          proposal={proposal}
+          payment={payment}
+          isDeciding={isDeciding}
+          isPaying={isPaying}
+          paymentNotice={paymentNotice}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          onPayNow={handlePayNow}
+        />
       )}
     </main>
   );
 }
 
-function PaymentApprovalCard({
+function summarizeReasoning(reasoning) {
+  // The full reasoning is itemized text meant for an audit trail. The
+  // items are already visible in the receipt above this card, so only
+  // surface the closing assurance line here to avoid repeating them.
+  const lines = reasoning.trim().split("\n");
+  return lines[lines.length - 1];
+}
+
+function PaymentProposalCard({
   proposal,
   payment,
   isDeciding,
@@ -261,98 +236,59 @@ function PaymentApprovalCard({
   onPayNow,
 }) {
   return (
-    <Card className="border-primary/30">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between text-base">
-          <span>Payment Proposal</span>
-          <StatusBadge status={proposal.status} />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <pre className="whitespace-pre-wrap rounded-md bg-muted/40 p-3 font-sans text-sm">
-          {proposal.reasoning}
-        </pre>
+    <div className="rounded-lg border border-primary/40 bg-card p-6">
+      <p className="text-sm font-medium">Before we charge anything</p>
+      <p className="mt-2 text-sm text-muted-foreground">{summarizeReasoning(proposal.reasoning)}</p>
 
-        {proposal.status === "proposed" && (
-          <div className="flex gap-2">
-            <Button onClick={onApprove} disabled={isDeciding} className="flex-1">
-              {isDeciding ? "Processing…" : "Approve Payment"}
-            </Button>
-            <Button onClick={onReject} disabled={isDeciding} variant="outline" className="flex-1">
-              Cancel
-            </Button>
-          </div>
-        )}
+      {proposal.status === "proposed" && (
+        <div className="mt-4 flex gap-2">
+          <Button onClick={onApprove} disabled={isDeciding} className="flex-1">
+            {isDeciding ? "Approving…" : "Approve payment"}
+          </Button>
+          <Button onClick={onReject} disabled={isDeciding} variant="outline" className="flex-1">
+            Cancel
+          </Button>
+        </div>
+      )}
 
-        {proposal.status === "rejected" && (
-          <p className="text-sm text-muted-foreground">
-            Payment cancelled. Your cart is unchanged — you can adjust items and propose again.
-          </p>
-        )}
-
-        {proposal.status === "approved" && payment && (
-          <PaymentStatusSection
-            payment={payment}
-            isPaying={isPaying}
-            paymentNotice={paymentNotice}
-            onPayNow={onPayNow}
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function PaymentStatusSection({ payment, isPaying, paymentNotice, onPayNow }) {
-  if (payment.status === "failed" && !payment.razorpay_payment_id) {
-    // Order creation itself failed — nothing to retry on this proposal.
-    return (
-      <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-        <p className="font-medium">Payment could not be created</p>
-        <p className="mt-1">{payment.failure_reason}</p>
-        <p className="mt-2 text-xs">
-          No charge was attempted. Go back to your cart and try proposing payment again.
+      {proposal.status === "rejected" && (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Cancelled — your cart is unchanged.
         </p>
-      </div>
-    );
-  }
+      )}
 
-  if (payment.status === "success") {
-    return (
-      <div className="rounded-md border border-green-600/30 bg-green-600/10 p-3 text-sm">
-        <p className="font-medium text-green-700">Payment successful ✓</p>
-        <p className="mt-1 text-muted-foreground">
-          Razorpay payment ID: <span className="font-mono">{payment.razorpay_payment_id}</span>
-        </p>
-      </div>
-    );
-  }
+      {proposal.status === "approved" && payment && (
+        <div className="mt-4">
+          {payment.status === "failed" && !payment.razorpay_payment_id && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <p className="font-medium">Payment couldn't be started</p>
+              <p className="mt-1">{payment.failure_reason}</p>
+              <p className="mt-2 text-xs">
+                Nothing was charged. Go back to your cart and try again.
+              </p>
+            </div>
+          )}
 
-  // status === "created": order exists, ready for the user to pay.
-  return (
-    <div className="flex flex-col gap-2">
-      <Button onClick={onPayNow} disabled={isPaying}>
-        {isPaying ? "Opening Razorpay…" : `Pay ₹${payment.amount.toLocaleString("en-IN")} with Razorpay`}
-      </Button>
-      {paymentNotice && (
-        <p
-          className={`text-sm ${
-            paymentNotice.type === "success"
-              ? "text-green-700"
-              : paymentNotice.type === "error"
-              ? "text-destructive"
-              : "text-muted-foreground"
-          }`}
-        >
-          {paymentNotice.message}
-        </p>
+          {payment.status === "created" && (
+            <div className="flex flex-col gap-2">
+              <Button variant="success" onClick={onPayNow} disabled={isPaying} className="w-full">
+                {isPaying
+                  ? "Opening Razorpay…"
+                  : `Pay ₹${payment.amount.toLocaleString("en-IN")}`}
+              </Button>
+              {paymentNotice && (
+                <p
+                  className={`text-sm ${
+                    paymentNotice.type === "error" ? "text-destructive" : "text-muted-foreground"
+                  }`}
+                >
+                  {paymentNotice.message}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
-}
-
-function StatusBadge({ status }) {
-  const variant =
-    status === "approved" ? "default" : status === "rejected" ? "destructive" : "secondary";
-  return <Badge variant={variant}>{status}</Badge>;
 }
