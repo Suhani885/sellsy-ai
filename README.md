@@ -27,47 +27,6 @@ Built for Razorpay Track 01: AI Growth & Agentic Commerce.
    test order; payment is confirmed only after the signature is verified
    server-side, never trusted from the browser alone.
 
-## Screens
-
-| Route | What's there |
-|---|---|
-| `/` | Storefront entry — example prompts, a "Start shopping" button |
-| `/chat` | The conversational shopping assistant |
-| `/cart` | Itemized order, guardrail-checked payment proposal, Razorpay checkout |
-| `/order/[id]` | Order confirmation — itemized receipt + payment status |
-
-## Architecture
-
-```
-sellsy-ai/
-├── frontend/                          # Next.js (App Router) + Tailwind v4 + shadcn/ui
-│   ├── app/
-│   │   ├── page.js                    # Storefront entry
-│   │   ├── chat/page.js               # Shopping assistant
-│   │   ├── cart/page.js               # Cart + payment proposal + checkout
-│   │   └── order/[proposalId]/page.js # Order confirmation
-│   ├── components/
-│   │   ├── ui/                        # shadcn primitives (button, card, badge, input)
-│   │   ├── wordmark.jsx                # Brand mark
-│   │   ├── shelf-card.jsx              # Product recommendation card
-│   │   └── receipt.jsx                 # Receipt row / divider / stamp primitives
-│   └── lib/                           # API client, session/cart persistence, Razorpay loader
-│
-├── backend/
-│   └── app/
-│       ├── api/routes/                # health, products, cart, chat, payment
-│       ├── models/                    # SQLAlchemy: Product, Cart, CartItem,
-│       │                              #   ConversationMessage, PaymentProposal, Payment
-│       ├── schemas/                   # Pydantic request/response contracts
-│       ├── services/                  # Business logic — where validation happens
-│       ├── repositories/              # Pure DB access, no business logic
-│       ├── agents/                    # LLM provider (Groq), prompt building, retrieval
-│       ├── policies/                  # Deterministic guardrail engine — no AI involved
-│       ├── seed/                      # Synthetic catalog data + seed script
-│       ├── config/                    # Environment-driven settings
-│       └── utils/                     # Logging, structured exception handling
-│   └── alembic/                       # Database migrations
-```
 
 **Why it's built this way:** the AI agent is advisory only. It can
 recommend and explain, but every product ID and price it mentions is
@@ -236,10 +195,7 @@ Runs at **http://localhost:3000**.
 5. Read the order summary, click **Approve payment**
 6. Click **Pay ₹X** — Razorpay's test checkout opens
 
-   **Test card:** `4111 1111 1111 1111`, any future expiry, any CVV —
-   click **Success** on Razorpay's mock bank page after submitting.
-
-   **Or Netbanking:** pick any bank, click **Success** on the mock page.
+   **Netbanking:** pick any bank, click **Success** on the mock page.
    (UPI test-mode simulation isn't available in Razorpay Checkout
    currently — Netbanking is the most reliable test path.)
 7. You're redirected to `/order/[id]` showing the confirmed, stamped receipt
