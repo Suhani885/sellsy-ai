@@ -50,7 +50,8 @@ recommend and explain, but every product ID and price it mentions is
 re-validated against the database before being shown to you, and it never
 touches carts, payments, or money directly. A separate, deterministic
 guardrail engine — plain Python, no LLM — is what actually decides whether
-an order is allowed to proceed to payment. 
+an order is allowed to proceed to payment. See `CLAUDE.md` for the full
+list of architectural rules this project depends on.
 
 ## Stack
 
@@ -104,7 +105,7 @@ using its connection string as `DATABASE_URL` below.
 ```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate        
+source .venv/bin/activate       
 pip install -r requirements.txt
 ```
 
@@ -214,7 +215,10 @@ Runs at **http://localhost:3000**.
 5. Read the order summary, click **Approve payment**
 6. Click **Pay ₹X** — Razorpay's test checkout opens
 
-   **Netbanking:** pick any bank, click **Success** on the mock page.
+   **Test card:** `4111 1111 1111 1111`, any future expiry, any CVV —
+   click **Success** on Razorpay's mock bank page after submitting.
+
+   **Or Netbanking:** pick any bank, click **Success** on the mock page.
    (UPI test-mode simulation isn't available in Razorpay Checkout
    currently — Netbanking is the most reliable test path.)
 7. You're redirected to `/order/[id]` showing the confirmed, stamped
