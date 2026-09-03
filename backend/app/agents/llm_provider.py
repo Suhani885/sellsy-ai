@@ -1,11 +1,7 @@
 """
-LLM provider abstraction.
-
-The rest of the app (ChatService) only ever talks to the LLMProvider
-interface, never to Groq directly. This keeps the provider swappable and,
-just as importantly, makes ChatService trivially testable by substituting a
-fake provider that returns canned JSON — no real API key or network call
-required.
+LLM provider abstraction. ChatService talks only to the LLMProvider
+interface, never to Groq directly, so tests can substitute a fake
+provider that returns canned JSON without a real API key or network call.
 """
 from abc import ABC, abstractmethod
 
@@ -17,9 +13,8 @@ from fastapi import status
 
 
 class AIProviderError(AppException):
-    """Raised when the LLM provider fails to respond or returns something
-    unusable. Mapped to 502 — this is an upstream failure, not a client
-    error and not our server's fault."""
+    """Raised when the LLM provider fails or returns something unusable.
+    Maps to 502: an upstream failure, not a client error."""
 
     status_code = status.HTTP_502_BAD_GATEWAY
     error_code = "AI_PROVIDER_ERROR"
@@ -29,8 +24,7 @@ class LLMProvider(ABC):
     @abstractmethod
     async def complete_json(self, system_prompt: str, user_message: str) -> str:
         """Return the raw JSON string produced by the model. Callers are
-        responsible for parsing/validating it — this method's only job is
-        talking to the provider and getting text back."""
+        responsible for parsing and validating it."""
         raise NotImplementedError
 
 
@@ -86,8 +80,7 @@ class GroqProvider(LLMProvider):
 
 
 def get_llm_provider() -> LLMProvider:
-    """Factory — swap providers here based on settings.ai_provider if more
-    are added later."""
+    """Factory — dispatches on settings.ai_provider."""
     if settings.ai_provider == "groq":
         return GroqProvider()
     raise AIProviderError(f"Unknown AI provider configured: {settings.ai_provider}")

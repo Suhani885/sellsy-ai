@@ -1,15 +1,13 @@
 """
-Reconstructs an audit trail for a session from data that's already being
-recorded elsewhere — conversation turns and payment proposal/transaction
-history. There's no separate audit_log table: every event here is derived
-from a real row that was written for its own functional reason (a chat
-message, a proposal, a payment attempt), which means the trail can never
-drift out of sync with what actually happened.
+Reconstructs an audit trail for a session from data already recorded
+elsewhere — conversation turns and payment proposal/transaction history.
+There's no separate audit_log table: every event is derived from a row
+written for its own functional reason, so the trail can't drift out of
+sync with what actually happened.
 
-A couple of events (PRODUCT_SEARCH, POLICY_VALIDATION) are synthesized
-rather than read from a dedicated log row — they're still truthful (the
-retrieval step and guardrail checks really did run before the recommendation
-or proposal could exist), just not separately persisted.
+PRODUCT_SEARCH and POLICY_VALIDATION events are synthesized rather than
+read from a dedicated log row, since the retrieval step and guardrail
+checks necessarily ran before the recommendation or proposal could exist.
 """
 from sqlalchemy.orm import Session
 
@@ -31,9 +29,9 @@ class AuditService:
         events.extend(self._events_from_conversation(session_id))
         events.extend(self._events_from_payments(session_id))
 
-        # Stable sort: for equal timestamps, the order events were
-        # appended above (search before recommendation, validation before
-        # proposal, etc.) is preserved.
+        # Stable sort: for equal timestamps, the append order above
+        # (search before recommendation, validation before proposal) is
+        # preserved.
         events.sort(key=lambda e: e.created_at)
 
         return AuditTrailOut(session_id=session_id, events=events)

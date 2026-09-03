@@ -36,7 +36,7 @@ class TransactionOut(BaseModel):
     razorpay_payment_id: str | None
     amount: float
     currency: str
-    status: str  # created | success | failed
+    status: str
     failure_reason: str | None = None
     created_at: datetime
     verified_at: datetime | None = None

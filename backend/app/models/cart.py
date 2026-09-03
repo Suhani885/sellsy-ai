@@ -13,7 +13,7 @@ class Cart(Base):
 
     # Optional client-supplied session identifier so a returning browser
     # session can be associated with the same cart later. Not authenticated
-    # in this phase — just a correlation key.
+    # — just a correlation key.
     session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(

@@ -1,12 +1,15 @@
 # Sellsy AI
 
-An AI-powered shopping assistant for an electronics merchant. You describe
-what you need in plain language, it recommends real, in-stock products
-with real prices, proposes relevant add-ons, and walks you through a
-payment you approve before anything is charged — via Razorpay in test
-mode.
+An AI-powered shopping assistant for an electronics merchant, extended
+with a revenue-recovery engine. You describe what you need in plain
+language, it recommends real, in-stock products with real prices,
+proposes relevant add-ons, and walks you through a payment you approve
+before anything is charged — via Razorpay in test mode. When a payment
+fails or a checkout gets abandoned instead, a separate, bounded recovery
+workflow detects it, diagnoses why, and sends a tracked nudge to win the
+revenue back.
 
-Built for Razorpay Track 01: AI Growth & Agentic Commerce.
+Built for Razorpay's **AI Revenue Recovery** track.
 
 ## What it does
 
@@ -32,8 +35,8 @@ Built for Razorpay Track 01: AI Growth & Agentic Commerce.
 ## Screens
 
 Every page shares one persistent navigation bar (`Sellsy` wordmark · Shop
-· Cart · Dashboard · Audit trail), so there's always a way to get anywhere
-in the app — you never need to type a URL by hand.
+· Cart · Dashboard · Recovery · Audit trail), so there's always a way to
+get anywhere in the app — you never need to type a URL by hand.
 
 | Route | What's there |
 |---|---|
@@ -42,6 +45,7 @@ in the app — you never need to type a URL by hand.
 | `/cart` | Itemized order, guardrail-checked payment proposal, Razorpay checkout |
 | `/order/[id]` | Order confirmation — itemized receipt + payment status |
 | `/dashboard` | Merchant analytics — conversations, recommendations, upsells, revenue, conversion rate |
+| `/recovery` | Revenue-recovery console — at-risk/recovered totals, scan + run-batch controls, per-case timelines, promise-to-pay, stop |
 | `/audit` | Full chronological event trail for any session |
 
 
@@ -52,6 +56,62 @@ touches carts, payments, or money directly. A separate, deterministic
 guardrail engine — plain Python, no LLM — is what actually decides whether
 an order is allowed to proceed to payment. See `CLAUDE.md` for the full
 list of architectural rules this project depends on.
+
+## Revenue recovery
+
+Two things quietly leak revenue in any self-serve checkout: a payment
+that fails and is never retried, and a checkout that's abandoned before
+approval. Sellsy AI's recovery engine turns both into tracked, bounded
+recovery cases instead of silent losses.
+
+1. **Detect** — `RecoveryService.scan()` looks for failed `Payment` rows
+   and `PaymentProposal`s left in `proposed` status past a staleness
+   window (30 minutes by default) and opens a `RecoveryCase` for each one
+   that isn't already being worked. A plain database scan — no LLM
+   involved in deciding what counts as at risk.
+2. **Diagnose** — every case gets a root cause. Where it's already known
+   from the data (an abandoned checkout has no failure to explain; this
+   app's own signature-verification failure is always worded the same
+   way), it's set deterministically. Only a messy gateway decline string
+   goes to the LLM to classify, into a fixed set of categories
+   (`card_declined`, `insufficient_funds`, `gateway_error`,
+   `signature_mismatch`, `checkout_abandoned`, `unknown`) — and a known
+   cause always overrides whatever the model guesses.
+3. **Intervene** — the same LLM call drafts a short nudge message,
+   grounded only in the case's real amount and item names (never an
+   invented price or discount), in a **Standard** or **Hinglish** tone
+   chosen per batch run. If the LLM call itself fails, a templated
+   fallback message is used instead of failing the whole batch — a
+   diagnosis, never a charge, depends on the model being available.
+4. **Escalate, or stop** — `app/policies/recovery_policy.py` is the
+   deterministic sibling of the payment guardrail engine: no LLM. It
+   enforces a fixed escalation ladder (nudge → nudge → final notice, with
+   a 24-hour cooldown between attempts) and stops a case outright if the
+   customer opts out, the amount exceeds the same transaction ceiling the
+   payment guardrails enforce, or the attempt limit is reached.
+5. **Promise-to-pay** — a nudge can be answered with "remind me in N
+   days" (`POST /api/recovery/{id}/promise`), which sets
+   `RecoveryCase.promised_retry_at`. The escalation ladder checks this
+   before sending the next nudge, so a stated promise is actually
+   honored, not just logged.
+6. **Close the loop** — `PaymentService.verify_payment`, the same method
+   that clears the cart on a real success, also checks for an open
+   recovery case on that session and marks it `recovered` with the real
+   amount paid. Recovery never bypasses the guardrail → proposal →
+   approval → verify chain — it only ever points a customer back to a
+   normal checkout.
+
+**Try it:**
+
+```bash
+# after the product catalog is seeded
+python -m app.seed.seed_recovery_scenarios   # creates demo failed/abandoned cases
+```
+
+Then open **Recovery** in the nav bar (or call `POST /api/recovery/scan`
+and `POST /api/recovery/run-batch` directly) to detect the cases and send
+the first round of nudges, and watch the at-risk/recovered totals and
+per-case timelines update.
 
 ## Stack
 
@@ -147,7 +207,8 @@ python -m alembic upgrade head
 ```
 
 Creates all tables: `products`, `carts`, `cart_items`,
-`conversation_messages`, `payment_proposals`, `payments`.
+`conversation_messages`, `payment_proposals`, `payments`,
+`recovery_cases`, `recovery_actions`.
 
 ### Seed the product catalog
 
@@ -159,6 +220,9 @@ Loads 41 synthetic products across 7 categories (laptops, smartphones,
 headphones, keyboards, mice, monitors, accessories), cross-linked with
 real upsell/cross-sell/compatible-product relationships. Safe to re-run —
 it skips seeding if products already exist, unless you pass `--reset`.
+
+To also seed demo failed-payment/abandoned-checkout data for the
+revenue-recovery flow, see **Try it** under [Revenue recovery](#revenue-recovery) below.
 
 ### Start the backend
 
@@ -215,10 +279,7 @@ Runs at **http://localhost:3000**.
 5. Read the order summary, click **Approve payment**
 6. Click **Pay ₹X** — Razorpay's test checkout opens
 
-   **Test card:** `4111 1111 1111 1111`, any future expiry, any CVV —
-   click **Success** on Razorpay's mock bank page after submitting.
-
-   **Or Netbanking:** pick any bank, click **Success** on the mock page.
+   **Netbanking:** pick any bank, click **Success** on the mock page.
    (UPI test-mode simulation isn't available in Razorpay Checkout
    currently — Netbanking is the most reliable test path.)
 7. You're redirected to `/order/[id]` showing the confirmed, stamped
@@ -226,35 +287,6 @@ Runs at **http://localhost:3000**.
 8. Check **Dashboard** to see the conversation/upsell/payment counters
    update, and **Audit trail** to see the exact event-by-event history of
    everything that just happened, in order.
-
----
-
-## API reference
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | Liveness + DB connectivity check |
-| GET | `/api/products` | List products (`?category=`, `?search=`, `?limit=`, `?offset=`) |
-| GET | `/api/products/{id}` | Single product |
-| POST | `/api/cart` | Create a cart |
-| GET | `/api/cart/{id}` | Get cart + items, with server-computed prices and total |
-| POST | `/api/cart/{id}/items` | Add an item (validates stock) |
-| DELETE | `/api/cart/{id}/items/{item_id}` | Remove an item |
-| POST | `/api/chat` | Send a message to the shopping assistant |
-| GET | `/api/chat/{session_id}/history` | Full conversation history |
-| POST | `/api/payment/propose` | Run guardrails, create a payment proposal |
-| GET | `/api/payment/{id}` | Fetch a proposal |
-| POST | `/api/payment/{id}/approve` | Approve → creates a real Razorpay order |
-| POST | `/api/payment/{id}/reject` | Reject a proposal |
-| POST | `/api/payment/{id}/verify` | Verify Razorpay's signature; clears the cart on success |
-| GET | `/api/payment/{id}/transaction` | Latest payment attempt for a proposal |
-| GET | `/api/audit/{session_id}` | Full chronological event trail for a session |
-| GET | `/api/analytics` | Aggregated merchant metrics across all sessions |
-
-All errors return a consistent shape:
-```json
-{ "error": { "code": "NOT_FOUND", "message": "Product 999 was not found." } }
-```
 
 ---
 
@@ -290,9 +322,20 @@ exactly what was ordered, independent of the live cart, which is what
 that's recorded with a clear reason, nothing is retried automatically, and
 no duplicate order is created from the same proposal.
 
+**Recovery decisions split the same way money-and-database access does.**
+Detecting at-risk revenue, deciding when to escalate, and deciding when
+to stop are all plain Python in `recovery_policy.py` — the same
+deterministic pattern as the payment guardrails, and for the same reason:
+those are decisions an auditor needs to be able to read without wondering
+what the model would have done differently. The LLM's only role is
+classifying an already-unclear failure reason and drafting nudge copy —
+both re-validated (a fixed cause enum, a length cap, no invented prices)
+before anything is stored or shown.
+
 **Nothing is a dead end.** Every page shares one persistent navigation bar
 — there's always a visible way to get to the shop, your cart, the merchant
-dashboard, or the audit trail, without needing to know or type a URL.
+dashboard, the revenue-recovery console, or the audit trail, without
+needing to know or type a URL.
 
 ---
 
@@ -321,6 +364,9 @@ Roll back the last migration: `python -m alembic downgrade -1`
 | `GROQ_MODEL` | No | Defaults to `openai/gpt-oss-120b` |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Yes (for payment) | Razorpay test-mode credentials |
 | `MAX_TRANSACTION_AMOUNT_INR` | No | Guardrail ceiling, defaults to 200000 |
+| `RECOVERY_MAX_ATTEMPTS` | No | Max recovery nudges per case before it expires, defaults to 3 |
+| `RECOVERY_COOLDOWN_HOURS` | No | Minimum hours between recovery attempts, defaults to 24 |
+| `RECOVERY_STALE_PROPOSAL_MINUTES` | No | How long a proposal sits unapproved before it counts as an abandoned checkout, defaults to 30 |
 | `ENVIRONMENT`, `LOG_LEVEL` | No | `development`/`production`, Python log level |
 
 ### Frontend (`frontend/.env.local`)
@@ -365,3 +411,8 @@ has those tables.
   doesn't fit local development)
 - Per-session spend caps in the guardrail engine
 - Streaming chat responses
+- Recovery nudges are drafted and tracked but not actually delivered over
+  a real channel yet (email/SMS/WhatsApp) — logging and dashboard
+  visibility only, in this phase
+- `run-batch` is triggered manually from the dashboard; a production
+  deployment would run detection and escalation on a schedule instead

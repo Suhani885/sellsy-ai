@@ -1,11 +1,5 @@
 """
-Lightweight catalog retrieval for grounding the agent's prompt.
-
-This is intentionally simple (keyword matching, not embeddings) — it's
-enough for a hackathon demo catalog of ~40 products, and keeps every part
-of this system explainable end-to-end. A vector-search retriever could
-swap in later without changing anything downstream, since this just
-returns a list[Product].
+Keyword-based catalog retrieval for grounding the agent's prompt.
 """
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -44,10 +38,8 @@ def retrieve_candidate_products(db: Session, message: str) -> list[Product]:
     if len(matched) >= 5:
         return matched[:MAX_CANDIDATES]
 
-    # Fallback: not enough keyword matches (e.g. vague message like "help me
-    # find a gift"). Give the agent one representative product per category
-    # so it has enough context to ask a clarifying question or make a
-    # broad suggestion, without dumping the entire catalog.
+    # Fallback for too few keyword matches: one representative product per
+    # category instead of the whole catalog.
     fallback_stmt = select(Product).order_by(Product.category, Product.price)
     all_products = list(db.execute(fallback_stmt).scalars().all())
 

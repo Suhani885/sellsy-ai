@@ -7,10 +7,9 @@ from app.models.base import Base
 
 
 class Payment(Base):
-    """A real Razorpay transaction attempt against an approved
-    PaymentProposal. Separate from PaymentProposal because one proposal
-    could in principle be retried with a fresh order (though this phase
-    deliberately does not auto-retry — see PaymentService.approve)."""
+    """A Razorpay transaction attempt against an approved PaymentProposal.
+    Kept separate from PaymentProposal because a proposal could be retried
+    with a fresh order — retries are never automatic, see PaymentService.approve."""
 
     __tablename__ = "payments"
 
@@ -23,7 +22,6 @@ class Payment(Base):
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="INR")
 
-    # created -> success | failed
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="created")
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 

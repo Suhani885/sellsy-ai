@@ -49,6 +49,12 @@ class TransactionRepository:
         self.db.refresh(payment)
         return payment
 
+    def get_by_id(self, payment_id: int) -> Payment | None:
+        return self.db.get(Payment, payment_id)
+
+    def get_failed(self) -> list[Payment]:
+        return self.db.query(Payment).filter(Payment.status == "failed").all()
+
     def get_by_order_id(self, razorpay_order_id: str) -> Payment | None:
         return (
             self.db.query(Payment)

@@ -23,21 +23,25 @@ class Settings(BaseSettings):
     # Comma-separated list of allowed origins, e.g. "http://localhost:3000,https://myapp.vercel.app"
     frontend_origins: str = "http://localhost:3000"
 
-    # --- Future: AI provider (not wired up yet in this phase) ---
+    # --- AI provider ---
     ai_provider: str = "groq"
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"
 
-    # --- Future: Razorpay (not wired up yet in this phase) ---
+    # --- Razorpay ---
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""
 
     # --- Guardrail / policy engine ---
-    # Safety ceiling for a single transaction, in rupees. Proposals above
-    # this are rejected outright rather than shown to the user. Tune this
-    # for your demo — it exists so a hallucinated or manipulated cart can
-    # never silently become a large real charge.
+    # Safety ceiling for a single transaction, in rupees; proposals above
+    # this are rejected outright. Prevents a hallucinated or manipulated
+    # cart from becoming a large real charge.
     max_transaction_amount_inr: float = 200000.0
+
+    # --- Revenue recovery engine ---
+    recovery_max_attempts: int = 3
+    recovery_cooldown_hours: int = 24
+    recovery_stale_proposal_minutes: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

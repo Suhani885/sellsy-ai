@@ -1,12 +1,10 @@
 """
 Builds the system prompt sent to the LLM for each chat turn.
 
-Two things this prompt is deliberately strict about:
-  1. Only ever reference product IDs that are actually in the provided
-     catalog context (the backend re-validates this anyway, but a good
-     prompt means fewer hallucinated IDs to throw away).
-  2. Respond with ONLY the JSON object — no markdown fences, no preamble —
-     matching the AgentRawOutput schema exactly.
+Constrains the model to product IDs present in the provided catalog
+context (the backend re-validates every ID independently) and to a raw
+JSON response matching the AgentRawOutput schema, with no markdown
+fences or preamble.
 """
 import json
 

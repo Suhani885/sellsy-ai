@@ -23,10 +23,7 @@ export function ReceiptRow({ label, sublabel, value, emphasis = false }) {
   );
 }
 
-/**
- * A stamped mark for the single deliberate moment of delight in the app —
- * order confirmation. Not for repeated decorative use elsewhere.
- */
+// Reserved for order confirmation — not a general-purpose decorative badge.
 export function StampBadge({ children, tone = "success", animate = false }) {
   const toneClasses =
     tone === "success"

@@ -1,10 +1,9 @@
 """
-CartService owns all cart business logic, most importantly: every price
-shown to the user is computed here, from the product's current price in
-the database — never trusted from the client, never cached on the cart
-item itself. This matters because it's the same principle a later payment
-step must follow: the amount charged always comes from a fresh DB read,
-never from anything the frontend sends.
+CartService owns cart business logic. Every price shown to the user is
+computed here from the product's current price in the database — never
+trusted from the client, never cached on the cart item. The payment step
+follows the same rule: the amount charged always comes from a fresh DB
+read, never from the frontend.
 """
 from sqlalchemy.orm import Session
 
@@ -66,10 +65,9 @@ class CartService:
         return self._build_cart_out(cart)
 
     def clear_cart(self, cart_id: int) -> None:
-        """Empties a cart's items — called after a successful payment so a
-        paid-for order doesn't linger and get shown (or re-orderable) as
-        if it were still an active cart. The Cart row itself is kept and
-        reused for whatever the person adds next."""
+        """Empties a cart's items. Called after a successful payment so a
+        paid-for order doesn't linger and reappear as an active cart; the
+        Cart row itself is kept and reused for whatever is added next."""
         self._get_cart_or_404(cart_id)
         self.repo.clear_items(cart_id)
 
@@ -81,16 +79,15 @@ class CartService:
 
     def _build_cart_out(self, cart: Cart) -> CartOut:
         """Builds the response with prices computed fresh from each item's
-        product, right now — not from anything stored on the cart item."""
+        current product, not from anything stored on the cart item."""
         item_outs: list[CartItemOut] = []
         total = 0.0
 
         for item in cart.items:
             product = self.product_repo.get_by_id(item.product_id)
             if product is None:
-                # Product was deleted after being added to a cart. Skip it
-                # rather than crash — a real merchant catalog can change
-                # under an open cart.
+                # Product was deleted after being added to a cart — skip
+                # rather than crash.
                 continue
 
             unit_price = float(product.price)

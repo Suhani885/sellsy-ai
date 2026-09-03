@@ -100,6 +100,29 @@ export const api = {
 
   getAnalytics: () => request("/api/analytics"),
 
+  scanRecoveryCases: () => request("/api/recovery/scan", { method: "POST" }),
+
+  runRecoveryBatch: (tone = "standard") =>
+    request("/api/recovery/run-batch", {
+      method: "POST",
+      body: JSON.stringify({ tone }),
+    }),
+
+  getRecoveryCases: () => request("/api/recovery"),
+
+  getRecoveryCase: (caseId) => request(`/api/recovery/${caseId}`),
+
+  getRecoverySummary: () => request("/api/recovery/summary"),
+
+  promiseToPay: (caseId, promisedRetryAt) =>
+    request(`/api/recovery/${caseId}/promise`, {
+      method: "POST",
+      body: JSON.stringify({ promised_retry_at: promisedRetryAt }),
+    }),
+
+  stopRecoveryCase: (caseId) =>
+    request(`/api/recovery/${caseId}/stop`, { method: "POST" }),
+
   sendChatMessage: (sessionId, message) =>
     request("/api/chat", {
       method: "POST",

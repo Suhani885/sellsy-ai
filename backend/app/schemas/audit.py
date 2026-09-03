@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class AuditEventOut(BaseModel):
     event_type: str
-    actor: str  # "user" | "agent" | "system"
+    actor: str
     summary: str
     payload: dict | None = None
     created_at: datetime

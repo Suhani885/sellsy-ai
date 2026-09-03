@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.policies.guardrail_engine import build_reasoning, run_guardrails
 from app.repositories.payment_repository import PaymentRepository
+from app.repositories.recovery_repository import RecoveryRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.schemas.payment import ApprovalResult, PaymentProposalOut, TransactionOut
 from app.services.cart_service import CartService
@@ -35,6 +36,7 @@ class PaymentService:
         self.transaction_repo = TransactionRepository(db)
         self.cart_service = CartService(db)
         self.razorpay_service = razorpay_service or RazorpayService()
+        self.recovery_repo = RecoveryRepository(db)
 
     def propose_payment(self, cart_id: int) -> PaymentProposalOut:
         cart = self.cart_service.get_cart(cart_id)  # raises NotFoundError if missing
@@ -76,9 +78,8 @@ class PaymentService:
                 amount_rupees=amount, receipt=f"proposal-{approved.id}"
             )
         except RazorpayError as exc:
-            # Explicit failure path: record it, do not retry, do not create
-            # another order. The user can start a fresh proposal if they
-            # want to try again.
+            # Explicit failure path: record it, never auto-retry. A retry
+            # requires a new proposal.
             failed_payment = self.transaction_repo.create_failed(
                 proposal_id=approved.id, amount=amount, failure_reason=str(exc)
             )
@@ -140,6 +141,9 @@ class PaymentService:
 
         updated = self.transaction_repo.mark_success(payment, razorpay_payment_id)
         self.cart_service.clear_cart(proposal.cart_id)
+        self.recovery_repo.mark_open_cases_recovered_for_session(
+            proposal.session_id, float(updated.amount)
+        )
         return self._transaction_to_out(updated)
 
     def get_latest_transaction(self, proposal_id: int) -> TransactionOut | None:

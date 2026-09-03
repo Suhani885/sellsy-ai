@@ -210,9 +210,8 @@ export default function CartPage() {
 }
 
 function summarizeReasoning(reasoning) {
-  // The full reasoning is itemized text meant for an audit trail. The
-  // items are already visible in the receipt above this card, so only
-  // surface the closing assurance line here to avoid repeating them.
+  // Only the last line is shown — the itemized reasoning above it
+  // duplicates what's already visible in the receipt.
   const lines = reasoning.trim().split("\n");
   return lines[lines.length - 1];
 }

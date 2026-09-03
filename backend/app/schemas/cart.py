@@ -27,9 +27,8 @@ class CartItemOut(BaseModel):
     added_reason: str
     product: ProductOut
 
-    # Computed server-side from the product's current price — never trust
-    # a price coming from the client or from cached data. This is always
-    # freshly calculated at read time in CartService.
+    # Computed server-side from the product's current price at read time —
+    # never trust a price from the client or cached data.
     unit_price: float
     line_total: float
 
@@ -40,7 +39,6 @@ class CartOut(BaseModel):
     created_at: datetime
     items: list[CartItemOut] = []
 
-    # Sum of every item's line_total, calculated server-side. This is the
-    # number a future payment step must use — never a total sent by the
-    # frontend.
+    # Sum of every item's line_total, calculated server-side — the number
+    # the payment step must use, never a total sent by the frontend.
     total: float

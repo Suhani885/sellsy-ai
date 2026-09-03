@@ -46,6 +46,15 @@ class PaymentRepository:
         """Every proposal, regardless of session — used for analytics."""
         return list(self.db.execute(select(PaymentProposal)).scalars().all())
 
+    def get_stale_proposed(self, older_than: datetime) -> list[PaymentProposal]:
+        """Proposals still 'proposed' (never approved or rejected) since
+        before older_than — candidates for checkout-abandonment recovery."""
+        stmt = select(PaymentProposal).where(
+            PaymentProposal.status == "proposed",
+            PaymentProposal.created_at < older_than,
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def update_status(self, proposal: PaymentProposal, status: str) -> PaymentProposal:
         proposal.status = status
         proposal.decided_at = datetime.now(timezone.utc)

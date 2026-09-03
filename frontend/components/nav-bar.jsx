@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/chat", label: "Shop" },
   { href: "/cart", label: "Cart" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/recovery", label: "Recovery" },
   { href: "/audit", label: "Audit trail" },
 ];
 

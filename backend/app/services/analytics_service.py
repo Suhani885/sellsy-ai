@@ -1,13 +1,12 @@
 """
-Aggregates existing data into merchant-facing metrics. Like AuditService,
-nothing here is tracked separately — every number is derived from
-conversation_messages, payment_proposals, and payments rows that already
-exist for their own functional reasons.
+Aggregates existing data into merchant-facing metrics. Nothing here is
+tracked separately — every number is derived from conversation_messages,
+payment_proposals, and payments rows that already exist for their own
+purposes.
 
 Aggregation happens in Python rather than SQL for the JSON-derived counts
-(recommendations, upsells) since those live inside a JSON column
-(structured_output) — perfectly fine at this data scale, and keeps the
-logic in one readable place rather than split across raw SQL and Python.
+(recommendations, upsells), since those live inside the structured_output
+JSON column.
 """
 from sqlalchemy.orm import Session
 

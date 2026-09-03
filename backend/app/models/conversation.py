@@ -15,11 +15,11 @@ class ConversationMessage(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    role: Mapped[str] = mapped_column(String(20), nullable=False)  # "user" | "agent"
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # The raw structured JSON the agent produced for this turn (null for user messages).
-    # Kept for explainability/audit purposes even at this phase.
+    # The raw structured JSON the agent produced for this turn (null for user messages),
+    # kept for explainability/audit purposes.
     structured_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

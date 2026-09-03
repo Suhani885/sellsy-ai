@@ -5,10 +5,6 @@ Each product is keyed by a temporary `sku` string so products can reference
 each other (compatible_products / upsell_products / cross_sell_products)
 before real database IDs exist. seed_catalog.py resolves these sku
 references to actual product IDs after insert.
-
-This is demo/seed data only — realistic enough for the AI agent and
-recommendation engine to have something meaningful to work with, not real
-merchant inventory.
 """
 
 CATALOG = [

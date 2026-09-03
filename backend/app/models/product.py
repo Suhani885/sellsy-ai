@@ -22,7 +22,7 @@ class Product(Base):
     features: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
-    # Lists of related product IDs — used later by the recommendation engine.
+    # Lists of related product IDs, used by the recommendation engine.
     compatible_products: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     upsell_products: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     cross_sell_products: Mapped[list] = mapped_column(JSON, nullable=False, default=list)

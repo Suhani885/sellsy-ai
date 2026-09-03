@@ -1,15 +1,7 @@
 """
-Guardrail / policy engine.
-
-This is deliberately deterministic, boring code — no LLM involvement at
-all. It runs after a cart total has already been computed server-side
-(CartService) and before that total is ever allowed to become a
-PaymentProposal. Every check here is a plain Python condition, easy to
-audit and easy to explain to a judge or a real user.
-
-If any check fails, PolicyViolationError is raised with a human-readable
-reason, which the API surfaces directly — the guardrail's job is to be
-transparent about *why* it blocked something, never to fail silently.
+Guardrail / policy engine. Deterministic — no LLM calls in this module.
+Runs after the cart total is computed server-side (CartService) and
+before it can become a PaymentProposal.
 """
 from app.config.settings import settings
 from app.schemas.cart import CartOut
@@ -23,8 +15,7 @@ class PolicyViolationError(AppException):
 
 
 def run_guardrails(cart: CartOut) -> None:
-    """Raises PolicyViolationError on the first violation found. Returns
-    nothing on success — the absence of an exception is the "pass"."""
+    """Raises PolicyViolationError on the first violation found."""
 
     _check_cart_not_empty(cart)
     _check_max_transaction_amount(cart)
@@ -46,8 +37,8 @@ def _check_max_transaction_amount(cart: CartOut) -> None:
 
 
 def _check_inventory_still_available(cart: CartOut) -> None:
-    """Re-check stock at proposal time — the cart may have been sitting
-    around for a while, and inventory can change under it."""
+    """Re-check stock at proposal time — the cart may be stale and
+    inventory can have changed since items were added."""
     for item in cart.items:
         if item.quantity > item.product.inventory:
             raise PolicyViolationError(
@@ -58,8 +49,8 @@ def _check_inventory_still_available(cart: CartOut) -> None:
 
 
 def build_reasoning(cart: CartOut) -> str:
-    """Plain-language explanation of what's being proposed and why —
-    this is the explainability artifact shown alongside the approval UI."""
+    """Plain-language explanation of the proposed order, shown alongside
+    the approval UI."""
     lines = [f"This order includes {len(cart.items)} item(s):"]
     for item in cart.items:
         tag = " (suggested add-on)" if item.added_reason == "upsell_accepted" else ""
