@@ -214,10 +214,7 @@ Runs at **http://localhost:3000**.
 5. Read the order summary, click **Approve payment**
 6. Click **Pay ₹X** — Razorpay's test checkout opens
 
-   **Test card:** `4111 1111 1111 1111`, any future expiry, any CVV —
-   click **Success** on Razorpay's mock bank page after submitting.
-
-   **Or Netbanking:** pick any bank, click **Success** on the mock page.
+   **Netbanking:** pick any bank, click **Success** on the mock page.
    (UPI test-mode simulation isn't available in Razorpay Checkout
    currently — Netbanking is the most reliable test path.)
 7. You're redirected to `/order/[id]` showing the confirmed, stamped
