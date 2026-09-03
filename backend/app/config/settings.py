@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     recovery_cooldown_hours: int = 24
     recovery_stale_proposal_minutes: int = 30
 
+    # B2B invoices are issued directly by the merchant, not built from an
+    # AI-suggested cart, so they don't carry the "hallucinated cart" risk
+    # max_transaction_amount_inr guards against — but a very large invoice
+    # still shouldn't get an automated chaser without a human looking at it.
+    recovery_receivable_max_amount_inr: float = 1000000.0
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property

@@ -9,6 +9,7 @@ from app.agents.recovery_prompts import build_case_context_message, build_diagno
 from app.config.settings import settings
 from app.policies.recovery_policy import ROOT_CAUSES, decide_next_action
 from app.repositories.payment_repository import PaymentRepository
+from app.repositories.receivable_repository import ReceivableRepository
 from app.repositories.recovery_repository import RecoveryRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.schemas.recovery import (
@@ -34,13 +35,16 @@ class RecoveryService:
         self.repo = RecoveryRepository(db)
         self.payment_repo = PaymentRepository(db)
         self.transaction_repo = TransactionRepository(db)
+        self.receivable_repo = ReceivableRepository(db)
         self.llm_provider = llm_provider or get_llm_provider()
 
     def scan(self) -> dict:
-        """Detection pass: turns failed payments and stale (never approved
-        or rejected) proposals into RecoveryCases. Deterministic — no LLM
-        involved in deciding what counts as at-risk revenue."""
+        """Detection pass: turns failed payments, stale (never approved or
+        rejected) proposals, and overdue B2B invoices into RecoveryCases.
+        Deterministic — no LLM involved in deciding what counts as
+        at-risk revenue."""
         detected = 0
+        now = datetime.now(timezone.utc)
 
         for payment in self.transaction_repo.get_failed():
             if self.repo.has_open_case_for_payment(payment.id):
@@ -58,9 +62,7 @@ class RecoveryService:
             )
             detected += 1
 
-        threshold = datetime.now(timezone.utc) - timedelta(
-            minutes=settings.recovery_stale_proposal_minutes
-        )
+        threshold = now - timedelta(minutes=settings.recovery_stale_proposal_minutes)
         for proposal in self.payment_repo.get_stale_proposed(threshold):
             if self.repo.has_open_case_for_proposal(proposal.id):
                 continue
@@ -71,6 +73,20 @@ class RecoveryService:
                 cart_id=proposal.cart_id,
                 session_id=proposal.session_id,
                 amount_at_risk=float(proposal.total_amount),
+            )
+            detected += 1
+
+        for invoice in self.receivable_repo.get_overdue_open(now):
+            if self.repo.has_open_case_for_invoice(invoice.id):
+                continue
+            self.repo.create_case(
+                source_type="overdue_invoice",
+                payment_id=None,
+                proposal_id=None,
+                cart_id=None,
+                session_id=None,
+                amount_at_risk=float(invoice.amount_due),
+                invoice_id=invoice.id,
             )
             detected += 1
 
@@ -117,7 +133,7 @@ class RecoveryService:
             system_prompt = build_diagnosis_prompt(tone, known_cause)
             user_message = build_case_context_message(self._build_case_context(case))
             raw_json = await self.llm_provider.complete_json(system_prompt, user_message)
-            diagnosis = self._parse_diagnosis(raw_json)
+            diagnosis = self._parse_diagnosis(raw_json, case)
         except AIProviderError as exc:
             logger.warning(
                 "Recovery diagnosis LLM call failed for case %s: %s — using fallback copy.",
@@ -126,22 +142,39 @@ class RecoveryService:
             )
             diagnosis = RecoveryDiagnosisRaw(
                 root_cause=known_cause or DEFAULT_ROOT_CAUSE,
-                message=(
-                    f"Your order for ₹{float(case.amount_at_risk):,.2f} is still "
-                    "waiting — you can finish checkout anytime from your cart."
-                ),
+                message=self._fallback_message(case),
             )
 
         if known_cause:
             diagnosis.root_cause = known_cause  # a known fact overrides the model's own guess
         return diagnosis
 
+    def _fallback_message(self, case) -> str:
+        """Used only when the LLM call itself fails — has to stay accurate
+        without any model-generated framing, so it's split by source_type
+        rather than reusing consumer checkout language for a B2B invoice."""
+        if case.source_type == "overdue_invoice":
+            invoice = self.receivable_repo.get_by_id(case.invoice_id) if case.invoice_id else None
+            reference = f"INV-{invoice.id:04d}" if invoice else "your invoice"
+            return (
+                f"This is a reminder that {reference} for "
+                f"₹{float(case.amount_at_risk):,.2f} is now overdue. Please "
+                "arrange payment or contact our accounts team."
+            )
+        return (
+            f"Your order for ₹{float(case.amount_at_risk):,.2f} is still "
+            "waiting — you can finish checkout anytime from your cart."
+        )
+
     def _deterministic_root_cause(self, case) -> str | None:
         """Cases where the cause doesn't need an LLM to classify: an
-        abandoned checkout has no failure at all, and this app's own
-        signature-verification failure message is always worded the same way."""
+        abandoned checkout has no failure at all, an overdue invoice is
+        overdue by definition, and this app's own signature-verification
+        failure message is always worded the same way."""
         if case.source_type == "abandoned_checkout":
             return "checkout_abandoned"
+        if case.source_type == "overdue_invoice":
+            return "invoice_overdue"
         if case.payment_id:
             payment = self.transaction_repo.get_by_id(case.payment_id)
             if payment and payment.failure_reason and "signature" in payment.failure_reason.lower():
@@ -149,6 +182,9 @@ class RecoveryService:
         return None
 
     def _build_case_context(self, case) -> dict:
+        if case.source_type == "overdue_invoice":
+            return self._build_invoice_context(case)
+
         proposal = self.payment_repo.get_by_id(case.proposal_id) if case.proposal_id else None
         items = []
         if proposal and proposal.cart_snapshot:
@@ -173,7 +209,29 @@ class RecoveryService:
             "attempts_so_far": case.attempts,
         }
 
-    def _parse_diagnosis(self, raw_json: str) -> RecoveryDiagnosisRaw:
+    def _build_invoice_context(self, case) -> dict:
+        invoice = self.receivable_repo.get_by_id(case.invoice_id) if case.invoice_id else None
+        if invoice is None:
+            return {
+                "amount_at_risk_inr": float(case.amount_at_risk),
+                "source_type": case.source_type,
+                "attempts_so_far": case.attempts,
+            }
+
+        now = datetime.now(timezone.utc)
+        days_overdue = max((now - invoice.due_at).days, 0)
+        return {
+            "amount_at_risk_inr": float(invoice.amount_due),
+            "invoice_number": f"INV-{invoice.id:04d}",
+            "customer_name": invoice.customer_name,
+            "description": invoice.description,
+            "due_date": invoice.due_at.date().isoformat(),
+            "days_overdue": days_overdue,
+            "source_type": case.source_type,
+            "attempts_so_far": case.attempts,
+        }
+
+    def _parse_diagnosis(self, raw_json: str, case) -> RecoveryDiagnosisRaw:
         try:
             data = json.loads(raw_json)
             diagnosis = RecoveryDiagnosisRaw.model_validate(data)
@@ -183,10 +241,7 @@ class RecoveryService:
             )
             return RecoveryDiagnosisRaw(
                 root_cause=DEFAULT_ROOT_CAUSE,
-                message=(
-                    "We noticed your order didn't go through — you can pick up "
-                    "right where you left off in your cart."
-                ),
+                message=self._fallback_message(case),
             )
 
         if diagnosis.root_cause not in ROOT_CAUSES:
@@ -237,6 +292,17 @@ class RecoveryService:
         recovered_amount = sum(float(c.recovered_amount or 0) for c in recovered)
         recovery_rate = round(len(recovered) / len(resolved), 4) if resolved else 0.0
 
+        now = datetime.now(timezone.utc)
+        promised = [c for c in cases if c.promised_retry_at is not None]
+        statuses = [self._promise_status(c, now) for c in promised]
+        pending = statuses.count("pending")
+        overdue = statuses.count("overdue")
+        kept = statuses.count("kept")
+        kept_late = statuses.count("kept_late")
+        broken = statuses.count("broken")
+        decided = kept + kept_late + broken
+        promise_keep_rate = round(kept / decided, 4) if decided else 0.0
+
         return RecoverySummaryOut(
             total_cases=len(cases),
             open_cases=len(open_cases),
@@ -244,7 +310,28 @@ class RecoveryService:
             recovered_cases=len(recovered),
             recovered_amount=round(recovered_amount, 2),
             recovery_rate=recovery_rate,
+            promises_made=len(promised),
+            promises_pending=pending,
+            promises_overdue=overdue,
+            promises_kept=kept,
+            promises_kept_late=kept_late,
+            promises_broken=broken,
+            promise_keep_rate=promise_keep_rate,
         )
+
+    def _promise_status(self, case, now: datetime) -> str | None:
+        """Derived, not stored — a promise's fate is fully determined by
+        fields the case already has (status, resolved_at vs
+        promised_retry_at), so there's nothing to keep in sync."""
+        if case.promised_retry_at is None:
+            return None
+        if case.status == "recovered":
+            if case.resolved_at and case.resolved_at <= case.promised_retry_at:
+                return "kept"
+            return "kept_late"
+        if case.status in ("expired", "stopped"):
+            return "broken"
+        return "pending" if case.promised_retry_at > now else "overdue"
 
     def _get_case_or_404(self, case_id: int):
         case = self.repo.get_by_id(case_id)
@@ -258,6 +345,7 @@ class RecoveryService:
             source_type=case.source_type,
             payment_id=case.payment_id,
             proposal_id=case.proposal_id,
+            invoice_id=case.invoice_id,
             cart_id=case.cart_id,
             session_id=case.session_id,
             amount_at_risk=float(case.amount_at_risk),
@@ -266,6 +354,7 @@ class RecoveryService:
             attempts=case.attempts,
             opted_out=case.opted_out,
             promised_retry_at=case.promised_retry_at,
+            promise_status=self._promise_status(case, datetime.now(timezone.utc)),
             recovered_amount=(
                 float(case.recovered_amount) if case.recovered_amount is not None else None
             ),

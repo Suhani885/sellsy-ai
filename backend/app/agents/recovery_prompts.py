@@ -5,16 +5,16 @@ Respond with ONLY a single JSON object (no markdown, no code fences, no text
 outside the JSON) matching exactly this shape:
 
 {
-  "root_cause": "<one of: card_declined, insufficient_funds, gateway_error, signature_mismatch, checkout_abandoned, unknown>",
+  "root_cause": "<one of: card_declined, insufficient_funds, gateway_error, signature_mismatch, checkout_abandoned, invoice_overdue, unknown>",
   "message": "<the recovery message, under 320 characters>"
 }
 
 Rules:
-- Only use the facts given to you below (amount, item names, failure reason). Never invent a discount, a new price, or a reason that wasn't stated.
-- Never promise anything the system hasn't already approved — no discounts, no guarantees, no legal or financial commitments.
+- Only use the facts given to you below. Never invent a discount, a new price, a late fee, an interest charge, or a legal threat that wasn't stated.
+- Never promise anything the system hasn't already approved — no discounts, no guarantees, no commitments.
 """
 
-TONE_INSTRUCTIONS = {
+CONSUMER_TONE_INSTRUCTIONS = {
     "hinglish": (
         "Write the nudge message in warm, casual Hinglish (Hindi-English "
         "code-mixed, Latin script) — the way a helpful support agent would "
@@ -38,9 +38,38 @@ TONE_INSTRUCTIONS = {
     ),
 }
 
+RECEIVABLE_TONE_INSTRUCTIONS = {
+    "hinglish": (
+        "Write the payment reminder in polite, professional Hinglish "
+        "(Hindi-English code-mixed, Latin script) — the way a small "
+        "business's accounts team would message another business they "
+        "have an ongoing relationship with. Respectful, not casual — this "
+        "is a B2B collections message, not a chat with a shopper. One "
+        "clear call to action: settle the invoice or contact the accounts "
+        "team."
+    ),
+    "voice_hinglish": (
+        "Write this as a short, professional spoken phone script in "
+        "Hinglish (Hindi-English code-mixed, Latin script) that an "
+        "accounts-receivable caller would read to a business customer's "
+        "office. Open with a brief greeting and identify the invoice, use "
+        "short natural sentences, never include a link (a listener can't "
+        "click anything), stay firm but courteous, and close with a clear "
+        "spoken next step. No emoji, no markdown."
+    ),
+    "standard": (
+        "Write the payment reminder in plain, professional English — the "
+        "tone of a standard accounts-receivable follow-up email, firm but "
+        "courteous, never threatening. One clear call to action: settle "
+        "the invoice or contact the accounts team."
+    ),
+}
+
 
 def build_diagnosis_prompt(tone: str, known_root_cause: str | None) -> str:
-    tone_instruction = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["standard"])
+    is_receivable = known_root_cause == "invoice_overdue"
+    tone_map = RECEIVABLE_TONE_INSTRUCTIONS if is_receivable else CONSUMER_TONE_INSTRUCTIONS
+    tone_instruction = tone_map.get(tone, tone_map["standard"])
 
     if known_root_cause:
         cause_instruction = (
@@ -53,12 +82,24 @@ def build_diagnosis_prompt(tone: str, known_root_cause: str | None) -> str:
             "one of the fixed categories."
         )
 
-    return f"""You are a revenue-recovery assistant for Sellsy AI, an online
+    if is_receivable:
+        role = """You are a B2B receivables assistant for Sellsy AI, an online
+electronics merchant that also sells in bulk to business customers on
+invoice/credit terms. An invoice has gone past its due date and you are
+drafting a payment reminder ("chaser") referencing the invoice amount and
+how overdue it is. You are advisory only — you never charge anything,
+change an amount, or contact the customer directly; the backend decides
+whether and when to send whatever "message" you draft, after validating
+it."""
+    else:
+        role = """You are a revenue-recovery assistant for Sellsy AI, an online
 electronics merchant. A payment or checkout stalled and you are drafting a
 short outreach message to help the customer complete it. You are advisory
 only — you never charge anything, change a price, or contact the customer
 directly; the backend decides whether and when to send whatever "message"
-you draft, after validating it.
+you draft, after validating it."""
+
+    return f"""{role}
 
 {cause_instruction}
 

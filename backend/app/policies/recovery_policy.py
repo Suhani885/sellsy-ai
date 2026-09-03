@@ -9,6 +9,7 @@ ROOT_CAUSES = {
     "gateway_error",
     "signature_mismatch",
     "checkout_abandoned",
+    "invoice_overdue",
     "unknown",
 }
 
@@ -36,12 +37,17 @@ def decide_next_action(case, now: datetime) -> RecoveryDecision:
             new_status="stopped", reason="Customer opted out of recovery contact."
         )
 
-    if float(case.amount_at_risk) > settings.max_transaction_amount_inr:
+    ceiling = (
+        settings.recovery_receivable_max_amount_inr
+        if case.source_type == "overdue_invoice"
+        else settings.max_transaction_amount_inr
+    )
+    if float(case.amount_at_risk) > ceiling:
         return RecoveryDecision(
             new_status="stopped",
             reason=(
-                "Amount at risk exceeds the transaction guardrail ceiling — "
-                "requires human review, not automated recovery."
+                f"Amount at risk exceeds the automated recovery ceiling "
+                f"(₹{ceiling:,.2f}) — requires human review, not automated contact."
             ),
         )
 

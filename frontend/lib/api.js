@@ -123,6 +123,23 @@ export const api = {
   stopRecoveryCase: (caseId) =>
     request(`/api/recovery/${caseId}/stop`, { method: "POST" }),
 
+  issueInvoice: ({ customerName, customerContact, description, amountDue, paymentTermsDays }) =>
+    request("/api/receivables", {
+      method: "POST",
+      body: JSON.stringify({
+        customer_name: customerName,
+        customer_contact: customerContact || null,
+        description,
+        amount_due: amountDue,
+        payment_terms_days: paymentTermsDays,
+      }),
+    }),
+
+  getInvoices: () => request("/api/receivables"),
+
+  markInvoicePaid: (invoiceId) =>
+    request(`/api/receivables/${invoiceId}/mark-paid`, { method: "POST" }),
+
   sendChatMessage: (sessionId, message) =>
     request("/api/chat", {
       method: "POST",

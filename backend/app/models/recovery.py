@@ -11,13 +11,14 @@ class RecoveryCase(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    # "failed_payment" | "abandoned_checkout"
+    # "failed_payment" | "abandoned_checkout" | "overdue_invoice"
     source_type: Mapped[str] = mapped_column(String(30), nullable=False)
     payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id"), nullable=True)
     proposal_id: Mapped[int | None] = mapped_column(
         ForeignKey("payment_proposals.id"), nullable=True
     )
-    cart_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"), nullable=True)
+    cart_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     amount_at_risk: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)

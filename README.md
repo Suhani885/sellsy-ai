@@ -45,7 +45,7 @@ get anywhere in the app — you never need to type a URL by hand.
 | `/cart` | Itemized order, guardrail-checked payment proposal, Razorpay checkout |
 | `/order/[id]` | Order confirmation — itemized receipt + payment status |
 | `/dashboard` | Merchant analytics — conversations, recommendations, upsells, revenue, conversion rate |
-| `/recovery` | Revenue-recovery console — at-risk/recovered totals, scan + run-batch controls, per-case timelines, promise-to-pay, stop |
+| `/recovery` | Revenue-recovery console — **Recovery cases** tab (at-risk/recovered totals, scan + run-batch controls, per-case timelines, promise-to-pay, stop) and **Receivables** tab (issue a B2B invoice, mark one paid) |
 | `/audit` | Full chronological event trail for any session |
 
 The layout is responsive from a small phone up through a wide desktop —
@@ -66,32 +66,41 @@ list of architectural rules this project depends on.
 
 ## Revenue recovery
 
-Two things quietly leak revenue in any self-serve checkout: a payment
-that fails and is never retried, and a checkout that's abandoned before
-approval. Sellsy AI's recovery engine turns both into tracked, bounded
-recovery cases instead of silent losses.
+Three things quietly leak revenue in a merchant that sells both to
+consumers and on credit to other businesses: a payment that fails and is
+never retried, a checkout that's abandoned before approval, and a B2B
+invoice that goes past its due date unnoticed. Sellsy AI's recovery
+engine turns all three into tracked, bounded recovery cases instead of
+silent losses — one detection → diagnosis → escalation pipeline, not
+three separate ones.
 
-1. **Detect** — `RecoveryService.scan()` looks for failed `Payment` rows
-   and `PaymentProposal`s left in `proposed` status past a staleness
-   window (30 minutes by default) and opens a `RecoveryCase` for each one
-   that isn't already being worked. A plain database scan — no LLM
-   involved in deciding what counts as at risk.
+1. **Detect** — `RecoveryService.scan()` looks for failed `Payment` rows,
+   `PaymentProposal`s left in `proposed` status past a staleness window
+   (30 minutes by default), and `Invoice`s past their due date with no
+   payment recorded, and opens a `RecoveryCase` for each one that isn't
+   already being worked. A plain database scan — no LLM involved in
+   deciding what counts as at risk.
 2. **Diagnose** — every case gets a root cause. Where it's already known
-   from the data (an abandoned checkout has no failure to explain; this
-   app's own signature-verification failure is always worded the same
-   way), it's set deterministically. Only a messy gateway decline string
-   goes to the LLM to classify, into a fixed set of categories
-   (`card_declined`, `insufficient_funds`, `gateway_error`,
-   `signature_mismatch`, `checkout_abandoned`, `unknown`) — and a known
+   from the data (an abandoned checkout has no failure to explain; an
+   overdue invoice is overdue by definition; this app's own
+   signature-verification failure is always worded the same way), it's
+   set deterministically. Only a messy gateway decline string goes to the
+   LLM to classify, into a fixed set of categories (`card_declined`,
+   `insufficient_funds`, `gateway_error`, `signature_mismatch`,
+   `checkout_abandoned`, `invoice_overdue`, `unknown`) — and a known
    cause always overrides whatever the model guesses.
-3. **Intervene** — the same LLM call drafts a short nudge message,
-   grounded only in the case's real amount and item names (never an
-   invented price or discount), in one of three tones chosen per batch
-   run: **Standard** (plain English), **Hinglish** (casual Hindi-English
-   chat copy), or **Hinglish voice** — a spoken phone-call script instead
-   of a text message (opens with a greeting, short natural sentences, no
-   links, closes with a spoken next step). The recovery console can read
-   a voice-tone message aloud in-browser via the Web Speech API as a
+3. **Intervene** — the same LLM call drafts a short recovery message,
+   grounded only in the case's real facts (amount, item names, or for an
+   invoice: the invoice number, customer, and days overdue — never an
+   invented price, discount, late fee, or legal threat), in one of three
+   tones chosen per batch run: **Standard** (plain English), **Hinglish**
+   (casual Hindi-English chat copy), or **Hinglish voice** — a spoken
+   phone-call script instead of a text message. A consumer nudge and a
+   B2B chaser use different prompt framing (a checkout nudge vs. a
+   professional accounts-receivable reminder) even at the same tone
+   setting — see `RECEIVABLE_TONE_INSTRUCTIONS` in
+   `app/agents/recovery_prompts.py`. The recovery console can read a
+   voice-tone message aloud in-browser via the Web Speech API as a
    preview of what an outbound call would say — no real phone call is
    placed. If the LLM call itself fails, a templated fallback message is
    used instead of failing the whole batch — a diagnosis, never a charge,
@@ -100,30 +109,47 @@ recovery cases instead of silent losses.
    deterministic sibling of the payment guardrail engine: no LLM. It
    enforces a fixed escalation ladder (nudge → nudge → final notice, with
    a 24-hour cooldown between attempts) and stops a case outright if the
-   customer opts out, the amount exceeds the same transaction ceiling the
-   payment guardrails enforce, or the attempt limit is reached.
+   customer opts out or the attempt limit is reached. The amount ceiling
+   is source-aware: a consumer case is capped at the same
+   `MAX_TRANSACTION_AMOUNT_INR` the payment guardrails enforce, while a
+   B2B invoice — issued directly by the merchant, not built from an
+   AI-suggested cart — gets its own, higher
+   `RECOVERY_RECEIVABLE_MAX_AMOUNT_INR` ceiling before it requires human
+   review instead of an automated chaser.
 5. **Promise-to-pay** — a nudge can be answered with "remind me in N
    days" (`POST /api/recovery/{id}/promise`), which sets
    `RecoveryCase.promised_retry_at`. The escalation ladder checks this
    before sending the next nudge, so a stated promise is actually
-   honored, not just logged.
-6. **Close the loop** — `PaymentService.verify_payment`, the same method
-   that clears the cart on a real success, also checks for an open
-   recovery case on that session and marks it `recovered` with the real
-   amount paid. Recovery never bypasses the guardrail → proposal →
-   approval → verify chain — it only ever points a customer back to a
-   normal checkout.
+   honored, not just logged. The **Promise tracker** tab on `/recovery`
+   measures what happened next: every promise is derived (no extra
+   column, no state to drift out of sync) into `pending`, `overdue`,
+   `kept` (paid by the promised date), `kept_late`, or `broken` (the case
+   closed without ever being paid) — with a keep rate across the whole
+   batch, not just a count of promises made.
+6. **Close the loop** — a consumer case closes the same way:
+   `PaymentService.verify_payment`, the same method that clears the cart
+   on a real success, checks for an open recovery case on that session
+   and marks it `recovered` with the real amount paid. A B2B case closes
+   when the invoice is marked paid (`POST
+   /api/receivables/{id}/mark-paid`) — realistically, most B2B
+   receivables settle by bank transfer outside any checkout flow, so this
+   is a manual "record payment" action rather than a forced fit into the
+   Razorpay consumer checkout API. Recovery never bypasses the guardrail
+   → proposal → approval → verify chain for a real charge — it only ever
+   points a customer back to a normal checkout, or a business back to
+   paying its invoice.
 
 **Try it:**
 
 ```bash
 # after the product catalog is seeded
 python -m app.seed.seed_recovery_scenarios   # creates demo failed/abandoned cases
+python -m app.seed.seed_receivables          # creates demo B2B invoices, some already overdue
 ```
 
-Then open **Recovery** in the nav bar (or call `POST /api/recovery/scan`
-and `POST /api/recovery/run-batch` directly) to detect the cases and send
-the first round of nudges, and watch the at-risk/recovered totals and
+Then open **Recovery** in the nav bar — the **Recovery cases** tab has
+the scan/run-batch controls, and the **Receivables** tab lets you issue a
+new invoice or mark one paid — and watch the at-risk/recovered totals and
 per-case timelines update.
 
 ## Stack
@@ -221,7 +247,7 @@ python -m alembic upgrade head
 
 Creates all tables: `products`, `carts`, `cart_items`,
 `conversation_messages`, `payment_proposals`, `payments`,
-`recovery_cases`, `recovery_actions`.
+`recovery_cases`, `recovery_actions`, `invoices`.
 
 ### Seed the product catalog
 
@@ -380,6 +406,7 @@ Roll back the last migration: `python -m alembic downgrade -1`
 | `RECOVERY_MAX_ATTEMPTS` | No | Max recovery nudges per case before it expires, defaults to 3 |
 | `RECOVERY_COOLDOWN_HOURS` | No | Minimum hours between recovery attempts, defaults to 24 |
 | `RECOVERY_STALE_PROPOSAL_MINUTES` | No | How long a proposal sits unapproved before it counts as an abandoned checkout, defaults to 30 |
+| `RECOVERY_RECEIVABLE_MAX_AMOUNT_INR` | No | Ceiling for automated B2B invoice chasing (separate from the consumer ceiling), defaults to 1000000 |
 | `ENVIRONMENT`, `LOG_LEVEL` | No | `development`/`production`, Python log level |
 
 ### Frontend (`frontend/.env.local`)
@@ -417,19 +444,8 @@ has those tables.
 
 ---
 
-## Roadmap (not yet built)
+## Deploying
 
-- Razorpay webhook handler as a production-grade alternative to the
-  current client-checkout + server-verify flow (needs a public URL, so it
-  doesn't fit local development)
-- Per-session spend caps in the guardrail engine
-- Streaming chat responses
-- Recovery nudges are drafted and tracked but not actually delivered over
-  a real channel yet (email/SMS/WhatsApp) — logging and dashboard
-  visibility only, in this phase
-- The **Hinglish voice** tone produces a spoken-call script and an
-  in-browser text-to-speech preview, not a real outbound phone call —
-  wiring an actual telephony/IVR channel (and the DND/consent handling a
-  real voice channel needs in India) is out of scope here
-- `run-batch` is triggered manually from the dashboard; a production
-  deployment would run detection and escalation on a schedule instead
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) for a free-tier path to a public
+URL — Vercel for the frontend, Render for the backend, Neon for
+Postgres — with the exact environment variables each side needs.

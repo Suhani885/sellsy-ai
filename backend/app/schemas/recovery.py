@@ -17,7 +17,8 @@ class RecoveryCaseOut(BaseModel):
     source_type: str
     payment_id: int | None
     proposal_id: int | None
-    cart_id: int
+    invoice_id: int | None
+    cart_id: int | None
     session_id: str | None
     amount_at_risk: float
     root_cause: str | None
@@ -25,6 +26,7 @@ class RecoveryCaseOut(BaseModel):
     attempts: int
     opted_out: bool
     promised_retry_at: datetime | None
+    promise_status: str | None
     recovered_amount: float | None
     created_at: datetime
     last_action_at: datetime | None
@@ -56,6 +58,14 @@ class RecoverySummaryOut(BaseModel):
     recovered_cases: int
     recovered_amount: float
     recovery_rate: float
+
+    promises_made: int
+    promises_pending: int
+    promises_overdue: int
+    promises_kept: int
+    promises_kept_late: int
+    promises_broken: int
+    promise_keep_rate: float
 
 
 class RecoveryDiagnosisRaw(BaseModel):

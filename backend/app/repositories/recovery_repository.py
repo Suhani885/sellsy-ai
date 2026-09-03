@@ -17,14 +17,16 @@ class RecoveryRepository:
         source_type: str,
         payment_id: int | None,
         proposal_id: int | None,
-        cart_id: int,
+        cart_id: int | None,
         session_id: str | None,
         amount_at_risk: float,
+        invoice_id: int | None = None,
     ) -> RecoveryCase:
         case = RecoveryCase(
             source_type=source_type,
             payment_id=payment_id,
             proposal_id=proposal_id,
+            invoice_id=invoice_id,
             cart_id=cart_id,
             session_id=session_id,
             amount_at_risk=amount_at_risk,
@@ -56,6 +58,13 @@ class RecoveryRepository:
     def has_open_case_for_proposal(self, proposal_id: int) -> bool:
         stmt = select(RecoveryCase).where(
             RecoveryCase.proposal_id == proposal_id,
+            RecoveryCase.status.in_(OPEN_STATUSES),
+        )
+        return self.db.execute(stmt).scalars().first() is not None
+
+    def has_open_case_for_invoice(self, invoice_id: int) -> bool:
+        stmt = select(RecoveryCase).where(
+            RecoveryCase.invoice_id == invoice_id,
             RecoveryCase.status.in_(OPEN_STATUSES),
         )
         return self.db.execute(stmt).scalars().first() is not None
@@ -152,4 +161,29 @@ class RecoveryRepository:
                     message=f"Payment completed — ₹{recovered_amount:,.2f} recovered.",
                 )
             )
+        self.db.commit()
+
+    def mark_open_case_recovered_for_invoice(self, invoice_id: int, recovered_amount: float) -> None:
+        """Same idea as mark_open_cases_recovered_for_session, keyed by
+        invoice instead of session — called when a B2B invoice is marked
+        paid, so the receivables chaser's loop closes too."""
+        stmt = select(RecoveryCase).where(
+            RecoveryCase.invoice_id == invoice_id,
+            RecoveryCase.status.in_(OPEN_STATUSES),
+        )
+        case = self.db.execute(stmt).scalars().first()
+        if case is None:
+            return
+
+        case.status = "recovered"
+        case.recovered_amount = recovered_amount
+        case.resolved_at = datetime.now(timezone.utc)
+        self.db.add(
+            RecoveryAction(
+                case_id=case.id,
+                action_type="recovered",
+                tone=None,
+                message=f"Invoice paid — ₹{recovered_amount:,.2f} recovered.",
+            )
+        )
         self.db.commit()
