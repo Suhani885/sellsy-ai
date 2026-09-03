@@ -1,7 +1,5 @@
 // Central API client for the Sellsy AI backend.
-//
-// NEXT_PUBLIC_API_BASE_URL is the only backend-related env var the frontend
-// needs. It's safe to expose to the browser (it's just a URL, not a secret).
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -97,6 +95,10 @@ export const api = {
         razorpay_signature: razorpaySignature,
       }),
     }),
+
+  getAuditTrail: (sessionId) => request(`/api/audit/${sessionId}`),
+
+  getAnalytics: () => request("/api/analytics"),
 
   sendChatMessage: (sessionId, message) =>
     request("/api/chat", {

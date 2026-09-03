@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShelfCard, ShelfRow } from "@/components/shelf-card";
-import { Wordmark } from "@/components/wordmark";
 import { api, ApiError } from "@/lib/api";
 import { ensureCart } from "@/lib/cart";
 import { getOrCreateSessionId } from "@/lib/session";
@@ -113,18 +111,11 @@ function ChatPageInner() {
     }
   }
 
-  const itemCount = cart?.items?.length ?? 0;
-
   return (
     <main className="mx-auto flex h-screen w-full max-w-2xl flex-col px-4 py-5">
-      <header className="mb-4 flex items-center justify-between border-b border-border pb-4">
-        <Link href="/">
-          <Wordmark />
-        </Link>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/cart">Cart{itemCount > 0 ? ` (${itemCount})` : ""}</Link>
-        </Button>
-      </header>
+      <div className="mb-2 pb-3 border-b border-border">
+        <h1 className="text-lg font-semibold tracking-tight">Shopping assistant</h1>
+      </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto pb-4">
         {messages.map((msg, i) => (

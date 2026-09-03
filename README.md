@@ -25,9 +25,15 @@ Built for Razorpay Track 01: AI Growth & Agentic Commerce.
    current stock before you ever see an approve button.
 5. **Pay via Razorpay (test mode)** — approving creates a real Razorpay
    test order; payment is confirmed only after the signature is verified
-   server-side, never trusted from the browser alone.
+   server-side, never trusted from the browser alone. Once verified, the
+   cart is cleared automatically — it won't show the same items again on
+   your next visit.
 
 ## Screens
+
+Every page shares one persistent navigation bar (`Sellsy` wordmark · Shop
+· Cart · Dashboard · Audit trail), so there's always a way to get anywhere
+in the app — you never need to type a URL by hand.
 
 | Route | What's there |
 |---|---|
@@ -35,46 +41,16 @@ Built for Razorpay Track 01: AI Growth & Agentic Commerce.
 | `/chat` | The conversational shopping assistant |
 | `/cart` | Itemized order, guardrail-checked payment proposal, Razorpay checkout |
 | `/order/[id]` | Order confirmation — itemized receipt + payment status |
+| `/dashboard` | Merchant analytics — conversations, recommendations, upsells, revenue, conversion rate |
+| `/audit` | Full chronological event trail for any session |
 
-## Architecture
-
-```
-sellsy-ai/
-├── frontend/                          # Next.js (App Router) + Tailwind v4 + shadcn/ui
-│   ├── app/
-│   │   ├── page.js                    # Storefront entry
-│   │   ├── chat/page.js               # Shopping assistant
-│   │   ├── cart/page.js               # Cart + payment proposal + checkout
-│   │   └── order/[proposalId]/page.js # Order confirmation
-│   ├── components/
-│   │   ├── ui/                        # shadcn primitives (button, card, badge, input)
-│   │   ├── wordmark.jsx                # Brand mark
-│   │   ├── shelf-card.jsx              # Product recommendation card
-│   │   └── receipt.jsx                 # Receipt row / divider / stamp primitives
-│   └── lib/                           # API client, session/cart persistence, Razorpay loader
-│
-├── backend/
-│   └── app/
-│       ├── api/routes/                # health, products, cart, chat, payment
-│       ├── models/                    # SQLAlchemy: Product, Cart, CartItem,
-│       │                              #   ConversationMessage, PaymentProposal, Payment
-│       ├── schemas/                   # Pydantic request/response contracts
-│       ├── services/                  # Business logic — where validation happens
-│       ├── repositories/              # Pure DB access, no business logic
-│       ├── agents/                    # LLM provider (Groq), prompt building, retrieval
-│       ├── policies/                  # Deterministic guardrail engine — no AI involved
-│       ├── seed/                      # Synthetic catalog data + seed script
-│       ├── config/                    # Environment-driven settings
-│       └── utils/                     # Logging, structured exception handling
-│   └── alembic/                       # Database migrations
-```
 
 **Why it's built this way:** the AI agent is advisory only. It can
 recommend and explain, but every product ID and price it mentions is
 re-validated against the database before being shown to you, and it never
 touches carts, payments, or money directly. A separate, deterministic
 guardrail engine — plain Python, no LLM — is what actually decides whether
-an order is allowed to proceed to payment.
+an order is allowed to proceed to payment. 
 
 ## Stack
 
@@ -128,7 +104,7 @@ using its connection string as `DATABASE_URL` below.
 ```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate        
 pip install -r requirements.txt
 ```
 
@@ -169,7 +145,7 @@ MAX_TRANSACTION_AMOUNT_INR=200000
 python -m alembic upgrade head
 ```
 
-This creates all tables: `products`, `carts`, `cart_items`,
+Creates all tables: `products`, `carts`, `cart_items`,
 `conversation_messages`, `payment_proposals`, `payments`.
 
 ### Seed the product catalog
@@ -228,11 +204,13 @@ Runs at **http://localhost:3000**.
 
 ## Trying the full flow
 
-1. Open `/` and click one of the example prompts, or go straight to `/chat`
+1. Open `/` — click one of the example prompts, or the **Shop** link in
+   the nav bar
 2. Ask for something — e.g. *"I need a laptop for college under ₹50,000"*
 3. Click **Add to cart** on a recommendation (and on the suggested add-on,
-   if one appears)
-4. Go to `/cart`, click **Review & pay**
+   if one appears) — the **Cart** link in the nav bar updates live with
+   the item count
+4. Click **Cart** in the nav, then **Review & pay**
 5. Read the order summary, click **Approve payment**
 6. Click **Pay ₹X** — Razorpay's test checkout opens
 
@@ -242,7 +220,11 @@ Runs at **http://localhost:3000**.
    **Or Netbanking:** pick any bank, click **Success** on the mock page.
    (UPI test-mode simulation isn't available in Razorpay Checkout
    currently — Netbanking is the most reliable test path.)
-7. You're redirected to `/order/[id]` showing the confirmed, stamped receipt
+7. You're redirected to `/order/[id]` showing the confirmed, stamped
+   receipt. Your cart is now empty — go back to **Cart** to confirm.
+8. Check **Dashboard** to see the conversation/upsell/payment counters
+   update, and **Audit trail** to see the exact event-by-event history of
+   everything that just happened, in order.
 
 ---
 
@@ -263,8 +245,10 @@ Runs at **http://localhost:3000**.
 | GET | `/api/payment/{id}` | Fetch a proposal |
 | POST | `/api/payment/{id}/approve` | Approve → creates a real Razorpay order |
 | POST | `/api/payment/{id}/reject` | Reject a proposal |
-| POST | `/api/payment/{id}/verify` | Verify Razorpay's signature after checkout |
+| POST | `/api/payment/{id}/verify` | Verify Razorpay's signature; clears the cart on success |
 | GET | `/api/payment/{id}/transaction` | Latest payment attempt for a proposal |
+| GET | `/api/audit/{session_id}` | Full chronological event trail for a session |
+| GET | `/api/analytics` | Aggregated merchant metrics across all sessions |
 
 All errors return a consistent shape:
 ```json
@@ -295,9 +279,19 @@ Razorpay creates the order (server-side, using a total computed by
 again after checkout completes, when the payment's cryptographic signature
 is independently verified server-side before anything is marked as paid.
 
+**A successful payment clears the cart.** Once a payment is verified, its
+items are removed so they don't linger and reappear on your next visit.
+The order itself isn't lost — `PaymentProposal.cart_snapshot` freezes
+exactly what was ordered, independent of the live cart, which is what
+`/order/[id]` and the audit trail read from.
+
 **Failures are explicit, not silent.** If Razorpay order creation fails,
 that's recorded with a clear reason, nothing is retried automatically, and
 no duplicate order is created from the same proposal.
+
+**Nothing is a dead end.** Every page shares one persistent navigation bar
+— there's always a visible way to get to the shop, your cart, the merchant
+dashboard, or the audit trail, without needing to know or type a URL.
 
 ---
 
@@ -365,7 +359,8 @@ has those tables.
 
 ## Roadmap (not yet built)
 
-- Audit trail UI surfacing the full agent/payment decision history
-- Merchant analytics dashboard (conversion rate, upsell acceptance, revenue)
 - Razorpay webhook handler as a production-grade alternative to the
-  current client-checkout + server-verify flow
+  current client-checkout + server-verify flow (needs a public URL, so it
+  doesn't fit local development)
+- Per-session spend caps in the guardrail engine
+- Streaming chat responses

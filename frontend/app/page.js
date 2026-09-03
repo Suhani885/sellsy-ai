@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { Wordmark } from "@/components/wordmark";
 import { api, API_BASE_URL } from "@/lib/api";
 
 const EXAMPLE_PROMPTS = [
@@ -40,10 +39,8 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-between px-6 py-16">
-      <div className="flex flex-col gap-16">
-        <Wordmark size="large" />
-
+    <main className="mx-auto flex min-h-[calc(100vh-57px)] w-full max-w-3xl flex-col justify-between px-6 py-12">
+      <div className="flex flex-col gap-14">
         <div className="flex flex-col gap-6">
           <h1 className="max-w-md text-3xl font-semibold leading-tight tracking-tight">
             Tell us what you're shopping for. We'll find it, explain why, and ring it up.
@@ -54,6 +51,7 @@ export default async function HomePage() {
           </p>
 
           <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">Try asking:</p>
             {EXAMPLE_PROMPTS.map((prompt) => (
               <Link
                 key={prompt}

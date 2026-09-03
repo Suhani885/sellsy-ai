@@ -4,7 +4,6 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Wordmark } from "@/components/wordmark";
 import { ReceiptDivider, ReceiptRow, StampBadge } from "@/components/receipt";
 import { api, ApiError } from "@/lib/api";
 
@@ -29,14 +28,7 @@ export default function OrderResultPage({ params }) {
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
-      <header className="flex items-center justify-between">
-        <Link href="/">
-          <Wordmark />
-        </Link>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/chat">Continue shopping</Link>
-        </Button>
-      </header>
+      <h1 className="text-xl font-semibold tracking-tight">Order confirmation</h1>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading order…</p>}
 
@@ -92,9 +84,14 @@ export default function OrderResultPage({ params }) {
 
           <div className="mt-6">
             {payment?.status === "success" && (
-              <p className="text-sm text-muted-foreground">
-                Payment ID: <span className="tabular-nums">{payment.razorpay_payment_id}</span>
-              </p>
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Payment ID: <span className="tabular-nums">{payment.razorpay_payment_id}</span>
+                </p>
+                <Button asChild className="w-full">
+                  <Link href="/chat">Continue shopping</Link>
+                </Button>
+              </div>
             )}
 
             {payment?.status === "failed" && (

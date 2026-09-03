@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.payment import PaymentProposal
@@ -32,6 +33,18 @@ class PaymentRepository:
 
     def get_by_id(self, proposal_id: int) -> PaymentProposal | None:
         return self.db.get(PaymentProposal, proposal_id)
+
+    def get_all_by_session(self, session_id: str) -> list[PaymentProposal]:
+        stmt = (
+            select(PaymentProposal)
+            .where(PaymentProposal.session_id == session_id)
+            .order_by(PaymentProposal.created_at.asc())
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
+    def get_all(self) -> list[PaymentProposal]:
+        """Every proposal, regardless of session — used for analytics."""
+        return list(self.db.execute(select(PaymentProposal)).scalars().all())
 
     def update_status(self, proposal: PaymentProposal, status: str) -> PaymentProposal:
         proposal.status = status

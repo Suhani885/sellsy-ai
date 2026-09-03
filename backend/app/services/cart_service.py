@@ -65,6 +65,14 @@ class CartService:
         cart = self._get_cart_or_404(cart_id)
         return self._build_cart_out(cart)
 
+    def clear_cart(self, cart_id: int) -> None:
+        """Empties a cart's items — called after a successful payment so a
+        paid-for order doesn't linger and get shown (or re-orderable) as
+        if it were still an active cart. The Cart row itself is kept and
+        reused for whatever the person adds next."""
+        self._get_cart_or_404(cart_id)
+        self.repo.clear_items(cart_id)
+
     def _get_cart_or_404(self, cart_id: int) -> Cart:
         cart = self.repo.get_by_id(cart_id)
         if cart is None:

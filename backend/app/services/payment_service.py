@@ -139,6 +139,7 @@ class PaymentService:
             )
 
         updated = self.transaction_repo.mark_success(payment, razorpay_payment_id)
+        self.cart_service.clear_cart(proposal.cart_id)
         return self._transaction_to_out(updated)
 
     def get_latest_transaction(self, proposal_id: int) -> TransactionOut | None:

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Wordmark } from "@/components/wordmark";
 import { ReceiptDivider, ReceiptRow } from "@/components/receipt";
 import { api, ApiError } from "@/lib/api";
 import { getStoredCartId } from "@/lib/cart";
@@ -135,14 +134,7 @@ export default function CartPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
-      <header className="flex items-center justify-between">
-        <Link href="/">
-          <Wordmark />
-        </Link>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/chat">← Chat</Link>
-        </Button>
-      </header>
+      <h1 className="text-xl font-semibold tracking-tight">Your cart</h1>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading your cart…</p>}
 

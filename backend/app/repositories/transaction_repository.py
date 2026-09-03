@@ -64,6 +64,18 @@ class TransactionRepository:
             .first()
         )
 
+    def get_all_for_proposal(self, proposal_id: int) -> list[Payment]:
+        return (
+            self.db.query(Payment)
+            .filter(Payment.proposal_id == proposal_id)
+            .order_by(Payment.created_at.asc())
+            .all()
+        )
+
+    def get_all(self) -> list[Payment]:
+        """Every payment attempt, regardless of proposal — used for analytics."""
+        return self.db.query(Payment).all()
+
     def mark_success(self, payment: Payment, razorpay_payment_id: str) -> Payment:
         payment.status = "success"
         payment.razorpay_payment_id = razorpay_payment_id
