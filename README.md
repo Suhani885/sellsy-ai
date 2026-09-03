@@ -442,10 +442,3 @@ sure every file in `backend/alembic/versions/` is present; a missing
 earlier migration breaks the whole chain even if your database already
 has those tables.
 
----
-
-## Deploying
-
-See [`DEPLOYMENT.md`](DEPLOYMENT.md) for a free-tier path to a public
-URL — Vercel for the frontend, Render for the backend, Neon for
-Postgres — with the exact environment variables each side needs.
