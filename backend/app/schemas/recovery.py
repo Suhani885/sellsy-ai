@@ -36,7 +36,7 @@ class RecoveryCaseDetailOut(RecoveryCaseOut):
 
 
 class RunBatchRequest(BaseModel):
-    tone: str = Field(default="standard", pattern="^(standard|hinglish)$")
+    tone: str = Field(default="standard", pattern="^(standard|hinglish|voice_hinglish)$")
 
 
 class RecoveryBatchResult(BaseModel):

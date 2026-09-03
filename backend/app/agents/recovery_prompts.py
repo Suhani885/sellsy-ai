@@ -6,29 +6,41 @@ outside the JSON) matching exactly this shape:
 
 {
   "root_cause": "<one of: card_declined, insufficient_funds, gateway_error, signature_mismatch, checkout_abandoned, unknown>",
-  "message": "<the recovery nudge to send the customer, under 320 characters>"
+  "message": "<the recovery message, under 320 characters>"
 }
 
 Rules:
 - Only use the facts given to you below (amount, item names, failure reason). Never invent a discount, a new price, or a reason that wasn't stated.
 - Never promise anything the system hasn't already approved — no discounts, no guarantees, no legal or financial commitments.
-- Keep "message" short enough for a single chat/SMS-style nudge, with one clear call to action: resume checkout.
 """
+
+TONE_INSTRUCTIONS = {
+    "hinglish": (
+        "Write the nudge message in warm, casual Hinglish (Hindi-English "
+        "code-mixed, Latin script) — the way a helpful support agent would "
+        "text an Indian customer. Stay respectful and clear about the "
+        "amount and next step; don't overdo slang. This is a written "
+        "chat/SMS-style message, one clear call to action: resume checkout."
+    ),
+    "voice_hinglish": (
+        "Write this as a short spoken phone script in warm, casual Hinglish "
+        "(Hindi-English code-mixed, Latin script) — what a support agent or "
+        "voice bot would actually say out loud on a call, not text on a "
+        "screen. Open with a brief greeting, use short simple sentences "
+        "that sound natural when read aloud, never include a link or URL "
+        "(a listener can't click anything), and close with a clear spoken "
+        "next step (e.g. tell them to check the app or website to finish "
+        "paying). No emoji, no markdown — this is read aloud verbatim."
+    ),
+    "standard": (
+        "Write the nudge message in plain, professional English — brief "
+        "and helpful, not pushy. One clear call to action: resume checkout."
+    ),
+}
 
 
 def build_diagnosis_prompt(tone: str, known_root_cause: str | None) -> str:
-    if tone == "hinglish":
-        tone_instruction = (
-            "Write the nudge message in warm, casual Hinglish (Hindi-English "
-            "code-mixed, Latin script) — the way a helpful support agent "
-            "would text an Indian customer. Stay respectful and clear about "
-            "the amount and next step; don't overdo slang."
-        )
-    else:
-        tone_instruction = (
-            "Write the nudge message in plain, professional English — "
-            "brief and helpful, not pushy."
-        )
+    tone_instruction = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["standard"])
 
     if known_root_cause:
         cause_instruction = (

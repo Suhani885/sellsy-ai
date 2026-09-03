@@ -62,7 +62,7 @@ export default function AuditPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Audit trail</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -75,6 +75,7 @@ export default function AuditPage() {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           placeholder="Session ID"
+          className="flex-1"
         />
         <Button type="submit" disabled={isLoading || !inputValue.trim()}>
           View

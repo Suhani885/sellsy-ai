@@ -48,6 +48,13 @@ get anywhere in the app — you never need to type a URL by hand.
 | `/recovery` | Revenue-recovery console — at-risk/recovered totals, scan + run-batch controls, per-case timelines, promise-to-pay, stop |
 | `/audit` | Full chronological event trail for any session |
 
+The layout is responsive from a small phone up through a wide desktop —
+the nav bar collapses into an icon-labeled menu below `md`, and every
+icon in the product (nav bar, stat tiles, buttons) comes from one icon
+set ([lucide-react](https://lucide.dev)) instead of emoji. The `Sellsy`
+mark is a shopping-bag glyph in a rounded amber badge
+(`components/wordmark.jsx`), reused as the browser favicon
+(`frontend/app/icon.svg`).
 
 **Why it's built this way:** the AI agent is advisory only. It can
 recommend and explain, but every product ID and price it mentions is
@@ -79,10 +86,16 @@ recovery cases instead of silent losses.
    cause always overrides whatever the model guesses.
 3. **Intervene** — the same LLM call drafts a short nudge message,
    grounded only in the case's real amount and item names (never an
-   invented price or discount), in a **Standard** or **Hinglish** tone
-   chosen per batch run. If the LLM call itself fails, a templated
-   fallback message is used instead of failing the whole batch — a
-   diagnosis, never a charge, depends on the model being available.
+   invented price or discount), in one of three tones chosen per batch
+   run: **Standard** (plain English), **Hinglish** (casual Hindi-English
+   chat copy), or **Hinglish voice** — a spoken phone-call script instead
+   of a text message (opens with a greeting, short natural sentences, no
+   links, closes with a spoken next step). The recovery console can read
+   a voice-tone message aloud in-browser via the Web Speech API as a
+   preview of what an outbound call would say — no real phone call is
+   placed. If the LLM call itself fails, a templated fallback message is
+   used instead of failing the whole batch — a diagnosis, never a charge,
+   depends on the model being available.
 4. **Escalate, or stop** — `app/policies/recovery_policy.py` is the
    deterministic sibling of the payment guardrail engine: no LLM. It
    enforces a fixed escalation ladder (nudge → nudge → final notice, with
@@ -117,7 +130,7 @@ per-case timelines update.
 
 | Layer | Tech |
 |---|---|
-| Frontend | Next.js (App Router) + Tailwind CSS v4 + shadcn/ui |
+| Frontend | Next.js (App Router) + Tailwind CSS v4 + shadcn/ui + lucide-react icons |
 | Backend | FastAPI, service-oriented architecture |
 | Database | PostgreSQL + SQLAlchemy + Alembic migrations |
 | AI | Groq API (`openai/gpt-oss-120b`, JSON-mode structured output) |
@@ -414,5 +427,9 @@ has those tables.
 - Recovery nudges are drafted and tracked but not actually delivered over
   a real channel yet (email/SMS/WhatsApp) — logging and dashboard
   visibility only, in this phase
+- The **Hinglish voice** tone produces a spoken-call script and an
+  in-browser text-to-speech preview, not a real outbound phone call —
+  wiring an actual telephony/IVR channel (and the DND/consent handling a
+  real voice channel needs in India) is out of scope here
 - `run-batch` is triggered manually from the dashboard; a production
   deployment would run detection and escalation on a schedule instead

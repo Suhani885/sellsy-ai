@@ -27,7 +27,7 @@ export default function OrderResultPage({ params }) {
   }, [proposalId]);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-xl font-semibold tracking-tight">Order confirmation</h1>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading order…</p>}
@@ -39,8 +39,8 @@ export default function OrderResultPage({ params }) {
       )}
 
       {proposal && (
-        <div className="rounded-lg border border-border bg-card p-6">
-          <div className="flex items-start justify-between gap-4">
+        <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-sm text-muted-foreground">Order #{proposal.id}</p>
               <p className="text-xs text-muted-foreground">
@@ -96,13 +96,13 @@ export default function OrderResultPage({ params }) {
 
             {payment?.status === "failed" && (
               <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                Payment wasn't completed. {payment.failure_reason}
+                Payment wasn&rsquo;t completed. {payment.failure_reason}
               </div>
             )}
 
             {(!payment || payment.status === "created") && (
               <p className="text-sm text-muted-foreground">
-                This order hasn't been paid yet.{" "}
+                This order hasn&rsquo;t been paid yet.{" "}
                 <Link href="/cart" className="underline underline-offset-2">
                   Go back to your cart
                 </Link>{" "}

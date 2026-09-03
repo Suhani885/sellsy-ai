@@ -1,12 +1,27 @@
 "use client";
 
+import {
+  AlertTriangle,
+  BadgeCheck,
+  Clock,
+  CreditCard,
+  IndianRupee,
+  RadarIcon,
+  ShoppingCart,
+  TrendingUp,
+  Volume2,
+  VolumeX,
+  Zap,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ReceiptDivider, ReceiptRow } from "@/components/receipt";
+import { StatGrid, StatTile } from "@/components/stat-tile";
 import { api, ApiError } from "@/lib/api";
+import { isSpeechSupported, speakText, stopSpeaking } from "@/lib/speech";
+import { cn } from "@/lib/utils";
 
 const STATUS_LABELS = {
   detected: "Detected",
@@ -24,9 +39,9 @@ const STATUS_BADGE_VARIANT = {
   stopped: "destructive",
 };
 
-const SOURCE_LABELS = {
-  failed_payment: "Payment failed",
-  abandoned_checkout: "Checkout abandoned",
+const SOURCE_META = {
+  failed_payment: { label: "Payment failed", icon: CreditCard },
+  abandoned_checkout: { label: "Checkout abandoned", icon: ShoppingCart },
 };
 
 const ROOT_CAUSE_LABELS = {
@@ -39,6 +54,11 @@ const ROOT_CAUSE_LABELS = {
 };
 
 const OPEN_STATUSES = ["detected", "attempting"];
+const TONES = [
+  { value: "standard", label: "Standard" },
+  { value: "hinglish", label: "Hinglish" },
+  { value: "voice_hinglish", label: "Hinglish voice" },
+];
 
 export default function RecoveryPage() {
   const [summary, setSummary] = useState(null);
@@ -49,6 +69,17 @@ export default function RecoveryPage() {
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState(null);
   const [promiseDrafts, setPromiseDrafts] = useState({});
+  const [playingActionId, setPlayingActionId] = useState(null);
+
+  function handleTogglePlay(action) {
+    if (playingActionId === action.id) {
+      stopSpeaking();
+      setPlayingActionId(null);
+      return;
+    }
+    setPlayingActionId(action.id);
+    speakText(action.message, { onEnd: () => setPlayingActionId(null) });
+  }
 
   async function loadAll() {
     setError(null);
@@ -126,7 +157,7 @@ export default function RecoveryPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Revenue recovery</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -142,61 +173,92 @@ export default function RecoveryPage() {
       )}
 
       {summary && (
-        <div className="rounded-lg border border-border bg-card p-6">
-          <ReceiptRow label="Open cases" value={summary.open_cases} />
-          <ReceiptRow
-            label="Amount at risk"
-            value={`₹${summary.amount_at_risk.toLocaleString("en-IN")}`}
-          />
-          <ReceiptDivider className="my-4" />
-          <ReceiptRow label="Recovered cases" value={summary.recovered_cases} />
-          <ReceiptRow
-            label="Amount recovered"
-            value={`₹${summary.recovered_amount.toLocaleString("en-IN")}`}
-          />
-          <ReceiptDivider className="my-1" />
-          <ReceiptRow
-            label="Recovery rate"
-            sublabel="Recovered ÷ (recovered + expired + stopped)"
-            value={`${Math.round(summary.recovery_rate * 100)}%`}
-            emphasis
-          />
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg border border-primary/40 bg-card p-6">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <TrendingUp className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+              <span className="text-xs font-medium uppercase tracking-wide">Recovery rate</span>
+            </div>
+            <p className="mt-1 text-4xl font-semibold tabular-nums">
+              {Math.round(summary.recovery_rate * 100)}%
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Recovered ÷ (recovered + expired + stopped)
+            </p>
+          </div>
+
+          <StatGrid columns={4}>
+            <StatTile icon={RadarIcon} label="Open cases" value={summary.open_cases} />
+            <StatTile
+              icon={IndianRupee}
+              label="Amount at risk"
+              value={`₹${summary.amount_at_risk.toLocaleString("en-IN")}`}
+              tone={summary.amount_at_risk > 0 ? "destructive" : "default"}
+            />
+            <StatTile icon={BadgeCheck} label="Recovered cases" value={summary.recovered_cases} tone="success" />
+            <StatTile
+              icon={IndianRupee}
+              label="Amount recovered"
+              value={`₹${summary.recovered_amount.toLocaleString("en-IN")}`}
+              tone="success"
+            />
+          </StatGrid>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" onClick={handleScan} disabled={isBusy}>
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+        <Button variant="outline" onClick={handleScan} disabled={isBusy} className="gap-1.5">
+          <RadarIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
           Scan for at-risk revenue
         </Button>
-        <select
-          value={tone}
-          onChange={(e) => setTone(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-        >
-          <option value="standard">Standard tone</option>
-          <option value="hinglish">Hinglish tone</option>
-        </select>
-        <Button onClick={handleRunBatch} disabled={isBusy}>
-          Run recovery batch
-        </Button>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex overflow-x-auto rounded-md border border-input p-0.5">
+            {TONES.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setTone(t.value)}
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-[5px] px-2.5 py-1.5 text-xs transition-colors sm:px-3 sm:text-sm",
+                  tone === t.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <Button onClick={handleRunBatch} disabled={isBusy} className="gap-1.5">
+            <Zap className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            Run recovery batch
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">
         {cases.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No recovery cases yet — click &quot;Scan for at-risk revenue&quot; to
-            detect failed payments and abandoned checkouts.
-          </p>
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-14 text-center">
+            <RadarIcon className="h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+            <p className="max-w-sm text-sm text-muted-foreground">
+              No recovery cases yet — scan for failed payments and abandoned checkouts to get started.
+            </p>
+          </div>
         )}
 
         {cases.map((c) => {
           const isOpen = OPEN_STATUSES.includes(c.status);
+          const source = SOURCE_META[c.source_type] || { label: c.source_type, icon: AlertTriangle };
+          const SourceIcon = source.icon;
+
           return (
-            <div key={c.id} className="rounded-lg border border-border bg-card p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <div key={c.id} className="rounded-lg border border-border bg-card p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
+                  <SourceIcon className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={2} aria-hidden="true" />
                   <Badge variant="secondary" className="text-[10px]">
-                    {SOURCE_LABELS[c.source_type] || c.source_type}
+                    {source.label}
                   </Badge>
                   <Badge variant={STATUS_BADGE_VARIANT[c.status] || "secondary"} className="text-[10px]">
                     {STATUS_LABELS[c.status] || c.status}
@@ -212,20 +274,23 @@ export default function RecoveryPage() {
                 </span>
               </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>{c.attempts} attempt(s)</span>
                 {c.promised_retry_at && (
-                  <span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
                     Promised retry: {new Date(c.promised_retry_at).toLocaleDateString("en-IN")}
                   </span>
                 )}
                 {c.recovered_amount != null && (
-                  <span>Recovered: ₹{c.recovered_amount.toLocaleString("en-IN")}</span>
+                  <span className="font-medium text-success">
+                    Recovered: ₹{c.recovered_amount.toLocaleString("en-IN")}
+                  </span>
                 )}
                 <button
                   type="button"
                   onClick={() => toggleExpand(c.id)}
-                  className="underline underline-offset-2"
+                  className="underline underline-offset-2 hover:text-foreground"
                 >
                   {expandedId === c.id ? "Hide timeline" : "View timeline"}
                 </button>
@@ -244,7 +309,30 @@ export default function RecoveryPage() {
                         {" "}
                         — {new Date(a.created_at).toLocaleString("en-IN")}
                       </span>
-                      {a.message && <p className="mt-0.5 text-foreground">{a.message}</p>}
+                      {a.message && (
+                        <div className="mt-0.5 flex items-start gap-2">
+                          <p className="flex-1 text-foreground">{a.message}</p>
+                          {a.tone === "voice_hinglish" && isSpeechSupported() && (
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePlay(a)}
+                              className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-1 text-muted-foreground hover:border-primary hover:text-foreground"
+                            >
+                              {playingActionId === a.id ? (
+                                <>
+                                  <VolumeX className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                                  Stop
+                                </>
+                              ) : (
+                                <>
+                                  <Volume2 className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                                  Play
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -260,7 +348,7 @@ export default function RecoveryPage() {
                     onChange={(e) =>
                       setPromiseDrafts((prev) => ({ ...prev, [c.id]: e.target.value }))
                     }
-                    className="h-8 w-16 text-xs"
+                    className="h-9 w-20 text-sm"
                   />
                   <span className="text-xs text-muted-foreground">days —</span>
                   <Button

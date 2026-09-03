@@ -1,4 +1,15 @@
-import { ReceiptDivider, ReceiptRow } from "@/components/receipt";
+import {
+  BadgeCheck,
+  CreditCard,
+  IndianRupee,
+  MessagesSquare,
+  PackageSearch,
+  Sparkles,
+  TrendingUp,
+  XCircle,
+} from "lucide-react";
+
+import { StatGrid, StatTile } from "@/components/stat-tile";
 import { api } from "@/lib/api";
 
 export default async function DashboardPage() {
@@ -12,7 +23,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">The ledger</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -27,35 +38,60 @@ export default async function DashboardPage() {
       )}
 
       {analytics && (
-        <div className="rounded-lg border border-border bg-card p-6">
-          <p className="text-sm text-muted-foreground">Conversations & recommendations</p>
-          <div className="mt-1">
-            <ReceiptRow label="Conversations" value={analytics.total_conversations} />
-            <ReceiptRow label="Products recommended" value={analytics.products_recommended} />
-            <ReceiptRow label="Add-ons suggested" value={analytics.upsells_proposed} />
-            <ReceiptRow label="Add-ons accepted" value={analytics.upsells_accepted} />
+        <div className="flex flex-col gap-8">
+          <div className="rounded-lg border border-primary/40 bg-card p-6">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <TrendingUp className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+              <span className="text-xs font-medium uppercase tracking-wide">Conversion rate</span>
+            </div>
+            <p className="mt-1 text-4xl font-semibold tabular-nums">
+              {Math.round(analytics.conversion_rate * 100)}%
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Successful payments ÷ conversations
+            </p>
           </div>
 
-          <ReceiptDivider className="my-4" />
-
-          <p className="text-sm text-muted-foreground">Payments</p>
-          <div className="mt-1">
-            <ReceiptRow label="Payments started" value={analytics.payments_initiated} />
-            <ReceiptRow label="Successful" value={analytics.successful_payments} />
-            <ReceiptRow label="Failed" value={analytics.failed_payments} />
-            <ReceiptRow
-              label="Extra revenue from add-ons"
-              value={`₹${analytics.estimated_additional_revenue.toLocaleString("en-IN")}`}
-            />
+          <div>
+            <h2 className="mb-3 text-sm font-medium text-muted-foreground">
+              Conversations &amp; recommendations
+            </h2>
+            <StatGrid columns={4}>
+              <StatTile icon={MessagesSquare} label="Conversations" value={analytics.total_conversations} />
+              <StatTile
+                icon={PackageSearch}
+                label="Products recommended"
+                value={analytics.products_recommended}
+              />
+              <StatTile icon={Sparkles} label="Add-ons suggested" value={analytics.upsells_proposed} />
+              <StatTile icon={BadgeCheck} label="Add-ons accepted" value={analytics.upsells_accepted} />
+            </StatGrid>
           </div>
 
-          <ReceiptDivider className="my-1" />
-          <ReceiptRow
-            label="Conversion rate"
-            sublabel="Successful payments ÷ conversations"
-            value={`${Math.round(analytics.conversion_rate * 100)}%`}
-            emphasis
-          />
+          <div>
+            <h2 className="mb-3 text-sm font-medium text-muted-foreground">Payments</h2>
+            <StatGrid columns={4}>
+              <StatTile icon={CreditCard} label="Payments started" value={analytics.payments_initiated} />
+              <StatTile
+                icon={BadgeCheck}
+                label="Successful"
+                value={analytics.successful_payments}
+                tone="success"
+              />
+              <StatTile
+                icon={XCircle}
+                label="Failed"
+                value={analytics.failed_payments}
+                tone={analytics.failed_payments > 0 ? "destructive" : "default"}
+              />
+              <StatTile
+                icon={IndianRupee}
+                label="Extra revenue from add-ons"
+                value={`₹${analytics.estimated_additional_revenue.toLocaleString("en-IN")}`}
+                tone="success"
+              />
+            </StatGrid>
+          </div>
         </div>
       )}
     </main>

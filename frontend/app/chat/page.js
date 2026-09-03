@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { SendHorizonal } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -112,12 +113,13 @@ function ChatPageInner() {
   }
 
   return (
-    <main className="mx-auto flex h-screen w-full max-w-2xl flex-col px-4 py-5">
-      <div className="mb-2 pb-3 border-b border-border">
+    <main className="mx-auto flex h-[calc(100dvh-57px)] w-full max-w-2xl flex-col px-4 sm:px-6">
+      <div className="border-b border-border py-4">
         <h1 className="text-lg font-semibold tracking-tight">Shopping assistant</h1>
+        <p className="text-xs text-muted-foreground">Grounded in real stock and prices — never guessed.</p>
       </div>
 
-      <div className="flex-1 space-y-5 overflow-y-auto pb-4">
+      <div className="flex-1 space-y-5 overflow-y-auto py-4">
         {messages.map((msg, i) => (
           <ChatTurn
             key={i}
@@ -127,7 +129,7 @@ function ChatPageInner() {
           />
         ))}
 
-        {isSending && <p className="text-sm text-muted-foreground">Looking that up…</p>}
+        {isSending && <TypingIndicator />}
 
         {error && (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -138,18 +140,33 @@ function ChatPageInner() {
         <div ref={scrollRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-border pt-4">
+      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-border py-4">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="What are you looking for?"
           disabled={isSending || !sessionId}
+          className="flex-1"
         />
-        <Button type="submit" disabled={isSending || !input.trim() || !sessionId}>
-          Send
+        <Button type="submit" disabled={isSending || !input.trim() || !sessionId} className="gap-1.5">
+          <span className="hidden sm:inline">Send</span>
+          <SendHorizonal className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
         </Button>
       </form>
     </main>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-center gap-1 border-l-2 border-primary/40 pl-3 py-1" aria-live="polite">
+      <span className="sr-only">Assistant is typing</span>
+      <span className="flex gap-1">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" />
+      </span>
+    </div>
   );
 }
 
@@ -159,7 +176,7 @@ function AddToCartButton({ product, reason, cartActionState, onAddToCart }) {
   if (state === "added") {
     return (
       <Button size="sm" variant="secondary" disabled className="w-full">
-        Added ✓
+        Added
       </Button>
     );
   }
@@ -181,13 +198,15 @@ function ChatTurn({ message, cartActionState, onAddToCart }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <p className="max-w-[80%] text-right text-sm">{message.content}</p>
+        <p className="max-w-[85%] rounded-2xl rounded-tr-sm bg-secondary px-4 py-2 text-sm sm:max-w-[75%]">
+          {message.content}
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3 border-l-2 border-primary/40 pl-3">
+    <div className="flex flex-col gap-3 border-l-2 border-primary/40 pl-3 sm:pl-4">
       <p className="text-sm leading-relaxed">{message.content}</p>
 
       {message.recommended_products?.length > 0 && (
@@ -210,7 +229,7 @@ function ChatTurn({ message, cartActionState, onAddToCart }) {
       )}
 
       {message.upsell && (
-        <div className="flex items-start gap-3 rounded-md bg-accent p-3">
+        <div className="flex flex-col gap-3 rounded-md bg-accent p-3 sm:flex-row sm:items-start">
           <div className="flex-1">
             <p className="text-sm font-medium">Pairs well: {message.upsell.product.name}</p>
             <p className="text-sm text-muted-foreground">{message.upsell.reasoning}</p>
@@ -218,12 +237,14 @@ function ChatTurn({ message, cartActionState, onAddToCart }) {
               ₹{Number(message.upsell.product.price).toLocaleString("en-IN")}
             </p>
           </div>
-          <AddToCartButton
-            product={message.upsell.product}
-            reason="upsell_accepted"
-            cartActionState={cartActionState}
-            onAddToCart={onAddToCart}
-          />
+          <div className="sm:w-32">
+            <AddToCartButton
+              product={message.upsell.product}
+              reason="upsell_accepted"
+              cartActionState={cartActionState}
+              onAddToCart={onAddToCart}
+            />
+          </div>
         </div>
       )}
     </div>

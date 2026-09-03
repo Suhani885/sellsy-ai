@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ShoppingCart, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -133,7 +134,7 @@ export default function CartPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
       <h1 className="text-xl font-semibold tracking-tight">Your cart</h1>
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading your cart…</p>}
@@ -145,17 +146,19 @@ export default function CartPage() {
       )}
 
       {!isLoading && (!cart || cart.items.length === 0) && !error && (
-        <p className="text-sm text-muted-foreground">
-          Nothing here yet.{" "}
-          <Link href="/chat" className="underline underline-offset-2">
-            Go find something
-          </Link>
-          .
-        </p>
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-14 text-center">
+          <ShoppingCart className="h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+          <p className="text-sm text-muted-foreground">
+            Nothing here yet.{" "}
+            <Link href="/chat" className="font-medium text-foreground underline underline-offset-2">
+              Go find something
+            </Link>
+          </p>
+        </div>
       )}
 
       {cart && cart.items.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-6">
+        <div className="rounded-lg border border-border bg-card p-5 sm:p-6">
           <p className="text-sm text-muted-foreground">Your order</p>
 
           <div className="mt-2">
@@ -173,8 +176,9 @@ export default function CartPage() {
                 <button
                   onClick={() => handleRemove(item.id)}
                   disabled={removingId === item.id || Boolean(proposal)}
-                  className="mb-1 -mt-2 text-xs text-muted-foreground underline underline-offset-2 disabled:opacity-40"
+                  className="mb-2 -mt-2 flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 disabled:no-underline disabled:opacity-40"
                 >
+                  <Trash2 className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
                   {removingId === item.id ? "Removing…" : "Remove"}
                 </button>
               </div>
@@ -210,8 +214,6 @@ export default function CartPage() {
 }
 
 function summarizeReasoning(reasoning) {
-  // Only the last line is shown — the itemized reasoning above it
-  // duplicates what's already visible in the receipt.
   const lines = reasoning.trim().split("\n");
   return lines[lines.length - 1];
 }
@@ -227,12 +229,12 @@ function PaymentProposalCard({
   onPayNow,
 }) {
   return (
-    <div className="rounded-lg border border-primary/40 bg-card p-6">
+    <div className="rounded-lg border border-primary/40 bg-card p-5 sm:p-6">
       <p className="text-sm font-medium">Before we charge anything</p>
       <p className="mt-2 text-sm text-muted-foreground">{summarizeReasoning(proposal.reasoning)}</p>
 
       {proposal.status === "proposed" && (
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <Button onClick={onApprove} disabled={isDeciding} className="flex-1">
             {isDeciding ? "Approving…" : "Approve payment"}
           </Button>
@@ -252,7 +254,7 @@ function PaymentProposalCard({
         <div className="mt-4">
           {payment.status === "failed" && !payment.razorpay_payment_id && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              <p className="font-medium">Payment couldn't be started</p>
+              <p className="font-medium">Payment couldn&rsquo;t be started</p>
               <p className="mt-1">{payment.failure_reason}</p>
               <p className="mt-2 text-xs">
                 Nothing was charged. Go back to your cart and try again.
