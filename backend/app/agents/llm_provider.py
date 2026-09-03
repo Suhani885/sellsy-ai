@@ -22,9 +22,12 @@ class AIProviderError(AppException):
 
 class LLMProvider(ABC):
     @abstractmethod
-    async def complete_json(self, system_prompt: str, user_message: str) -> str:
-        """Return the raw JSON string produced by the model. Callers are
-        responsible for parsing and validating it."""
+    async def complete_json(self, system_prompt: str, messages: list[dict]) -> str:
+        """messages is the conversation so far (each {"role": "user"|"assistant",
+        "content": str}, oldest first) — callers include prior turns here so the
+        model isn't re-asking what it was already told. Returns the raw JSON
+        string produced by the model; callers are responsible for parsing and
+        validating it."""
         raise NotImplementedError
 
 
@@ -40,7 +43,7 @@ class GroqProvider(LLMProvider):
         self.api_key = api_key or settings.groq_api_key
         self.model = model or settings.groq_model
 
-    async def complete_json(self, system_prompt: str, user_message: str) -> str:
+    async def complete_json(self, system_prompt: str, messages: list[dict]) -> str:
         if not self.api_key or self.api_key == "placeholder":
             raise AIProviderError(
                 "Groq API key is not configured. Set GROQ_API_KEY in backend/.env."
@@ -48,10 +51,7 @@ class GroqProvider(LLMProvider):
 
         payload = {
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
+            "messages": [{"role": "system", "content": system_prompt}, *messages],
             "response_format": {"type": "json_object"},
             "temperature": 0.3,
             "max_tokens": 2048,

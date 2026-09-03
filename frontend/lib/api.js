@@ -12,6 +12,14 @@ class ApiError extends Error {
   }
 }
 
+const CART_UPDATED_EVENT = "sellsy:cart-updated";
+
+function notifyCartUpdated() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(CART_UPDATED_EVENT));
+  }
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -65,10 +73,16 @@ export const api = {
         quantity,
         added_reason: addedReason,
       }),
+    }).then((cart) => {
+      notifyCartUpdated();
+      return cart;
     }),
 
   removeCartItem: (cartId, itemId) =>
-    request(`/api/cart/${cartId}/items/${itemId}`, { method: "DELETE" }),
+    request(`/api/cart/${cartId}/items/${itemId}`, { method: "DELETE" }).then((cart) => {
+      notifyCartUpdated();
+      return cart;
+    }),
 
   proposePayment: (cartId) =>
     request("/api/payment/propose", {
@@ -149,4 +163,4 @@ export const api = {
   getChatHistory: (sessionId) => request(`/api/chat/${sessionId}/history`),
 };
 
-export { ApiError, API_BASE_URL };
+export { ApiError, API_BASE_URL, CART_UPDATED_EVENT };

@@ -132,7 +132,9 @@ class RecoveryService:
         try:
             system_prompt = build_diagnosis_prompt(tone, known_cause)
             user_message = build_case_context_message(self._build_case_context(case))
-            raw_json = await self.llm_provider.complete_json(system_prompt, user_message)
+            raw_json = await self.llm_provider.complete_json(
+                system_prompt, [{"role": "user", "content": user_message}]
+            )
             diagnosis = self._parse_diagnosis(raw_json, case)
         except AIProviderError as exc:
             logger.warning(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { SendHorizonal } from "lucide-react";
+import { SendHorizonal, X } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,25 @@ const WELCOME_MESSAGE = {
   recommended_products: [],
   upsell: null,
 };
+
+const TIP_DISMISSED_KEY = "sellsy_chat_tip_dismissed";
+
+function capitalize(word) {
+  if (!word) return "";
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function toDisplayMessage(m) {
+  if (m.role === "user") {
+    return { role: "user", content: m.content };
+  }
+  return {
+    role: "agent",
+    content: m.content,
+    recommended_products: m.structured_output?.recommended_products || [],
+    upsell: m.structured_output?.upsell || null,
+  };
+}
 
 export default function ChatPage() {
   return (
@@ -36,7 +55,11 @@ function ChatPageInner() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState(null);
   const [cartActionState, setCartActionState] = useState({});
+  const [categories, setCategories] = useState([]);
+  const [showTip, setShowTip] = useState(false);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
   const hasAutoSent = useRef(false);
 
   useEffect(() => {
@@ -45,20 +68,51 @@ function ChatPageInner() {
     ensureCart(sid)
       .then(setCart)
       .catch(() => {});
+
+    api
+      .getChatHistory(sid)
+      .then((history) => {
+        if (history.length > 0) {
+          setMessages(history.map(toDisplayMessage));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsHistoryLoaded(true));
+
+    api
+      .getProducts()
+      .then((products) => {
+        const unique = [...new Set(products.map((p) => p.category))].sort();
+        setCategories(unique);
+      })
+      .catch(() => {});
+
+    try {
+      setShowTip(window.localStorage.getItem(TIP_DISMISSED_KEY) !== "1");
+    } catch {
+      setShowTip(true);
+    }
   }, []);
 
   useEffect(() => {
     const initialQuery = searchParams.get("q");
-    if (initialQuery && sessionId && !hasAutoSent.current) {
+    if (initialQuery && sessionId && isHistoryLoaded && !hasAutoSent.current) {
       hasAutoSent.current = true;
       sendMessage(initialQuery);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, isHistoryLoaded]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
+
+  function dismissTip() {
+    setShowTip(false);
+    try {
+      window.localStorage.setItem(TIP_DISMISSED_KEY, "1");
+    } catch {}
+  }
 
   async function sendMessage(text) {
     const trimmed = text.trim();
@@ -93,7 +147,14 @@ function ChatPageInner() {
     if (isSending) return;
     const text = input;
     setInput("");
+    inputRef.current?.focus();
     await sendMessage(text);
+    inputRef.current?.focus();
+  }
+
+  function handleCategoryClick(category) {
+    if (isSending) return;
+    sendMessage(`Show me your ${category}`);
   }
 
   async function handleAddToCart(product, addedReason) {
@@ -117,7 +178,40 @@ function ChatPageInner() {
       <div className="border-b border-border py-4">
         <h1 className="text-lg font-semibold tracking-tight">Shopping assistant</h1>
         <p className="text-xs text-muted-foreground">Grounded in real stock and prices — never guessed.</p>
+        {categories.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {categories.map((category) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => handleCategoryClick(category)}
+                disabled={isSending}
+                className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-50"
+              >
+                {capitalize(category)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {showTip && (
+        <div className="mt-3 flex items-start gap-2 rounded-md bg-accent px-3 py-2 text-xs text-accent-foreground">
+          <p className="flex-1">
+            <strong className="font-medium">New here?</strong> Say what you need — a budget, a
+            category, an occasion. You&rsquo;ll review real picks, add what you like to your cart,
+            and approve payment yourself; nothing is ever charged automatically.
+          </p>
+          <button
+            type="button"
+            onClick={dismissTip}
+            aria-label="Dismiss tip"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 space-y-5 overflow-y-auto py-4">
         {messages.map((msg, i) => (
@@ -142,10 +236,12 @@ function ChatPageInner() {
 
       <form onSubmit={handleSubmit} className="flex gap-2 border-t border-border py-4">
         <Input
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="What are you looking for?"
-          disabled={isSending || !sessionId}
+          disabled={!sessionId}
+          autoFocus
           className="flex-1"
         />
         <Button type="submit" disabled={isSending || !input.trim() || !sessionId} className="gap-1.5">

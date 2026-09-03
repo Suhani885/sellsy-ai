@@ -5,7 +5,7 @@ import { NavBar } from "@/components/nav-bar";
 
 export const metadata = {
   title: "Sellsy AI",
-  description: "AI-powered merchant commerce agent — Razorpay Track 01",
+  description: "AI-powered merchant commerce agent",
 };
 
 export default function RootLayout({ children }) {

@@ -1,444 +1,165 @@
 # Sellsy AI
 
-An AI-powered shopping assistant for an electronics merchant, extended
-with a revenue-recovery engine. You describe what you need in plain
-language, it recommends real, in-stock products with real prices,
-proposes relevant add-ons, and walks you through a payment you approve
-before anything is charged — via Razorpay in test mode. When a payment
-fails or a checkout gets abandoned instead, a separate, bounded recovery
-workflow detects it, diagnoses why, and sends a tracked nudge to win the
-revenue back.
+An AI shopping assistant for an electronics merchant, extended with a
+revenue-recovery engine. Ask for what you need in plain language, get
+real in-stock recommendations, and approve a Razorpay (test mode)
+payment yourself — nothing is charged automatically. When a payment
+fails, a checkout is abandoned, or a B2B invoice goes overdue, a
+separate, bounded recovery pipeline detects it, diagnoses why, and
+sends a tracked follow-up to win the revenue back.
 
 Built for Razorpay's **AI Revenue Recovery** track.
 
+**Live demo:** [sellsy-ai.vercel.app](https://sellsy-ai.vercel.app)
+
 ## What it does
 
-1. **Ask for something** — "a laptop for college under ₹50,000" — and the
-   assistant searches a real product catalog, not a hallucinated one.
-2. **Get recommendations grounded in the database** — every product ID,
-   price, and stock count shown to you is re-validated against Postgres
-   server-side. The AI can suggest what to show; it can never make up a
-   product or a price.
-3. **See relevant add-ons** — the assistant may propose a complementary
-   item (a mouse for a laptop, a case for a phone) only when that pairing
-   is explicitly defined in the catalog, never invented.
-4. **Add to cart, review, approve** — nothing is charged until you see an
-   itemized order and explicitly approve it. A deterministic guardrail
-   engine (no AI involved) checks the order against policy limits and
-   current stock before you ever see an approve button.
-5. **Pay via Razorpay (test mode)** — approving creates a real Razorpay
-   test order; payment is confirmed only after the signature is verified
-   server-side, never trusted from the browser alone. Once verified, the
-   cart is cleared automatically — it won't show the same items again on
-   your next visit.
+1. **Ask** — "a laptop for college under ₹50,000." The assistant
+   remembers the conversation and searches a real product catalog.
+2. **Get grounded recommendations** — every product, price, and stock
+   count is re-validated against Postgres. The AI can suggest; it can't
+   invent a product or a price.
+3. **Add to cart, review, approve** — a deterministic guardrail engine
+   (no AI) checks stock and spending limits before you ever see an
+   approve button.
+4. **Pay via Razorpay (test mode)** — the signature is verified
+   server-side before anything is marked paid, and the cart clears
+   automatically on success.
 
-## Screens
-
-Every page shares one persistent navigation bar (`Sellsy` wordmark · Shop
-· Cart · Dashboard · Recovery · Audit trail), so there's always a way to
-get anywhere in the app — you never need to type a URL by hand.
-
-| Route | What's there |
-|---|---|
-| `/` | Storefront entry — example prompts, a "Start shopping" button |
-| `/chat` | The conversational shopping assistant |
-| `/cart` | Itemized order, guardrail-checked payment proposal, Razorpay checkout |
-| `/order/[id]` | Order confirmation — itemized receipt + payment status |
-| `/dashboard` | Merchant analytics — conversations, recommendations, upsells, revenue, conversion rate |
-| `/recovery` | Revenue-recovery console — **Recovery cases** tab (at-risk/recovered totals, scan + run-batch controls, per-case timelines, promise-to-pay, stop) and **Receivables** tab (issue a B2B invoice, mark one paid) |
-| `/audit` | Full chronological event trail for any session |
-
-The layout is responsive from a small phone up through a wide desktop —
-the nav bar collapses into an icon-labeled menu below `md`, and every
-icon in the product (nav bar, stat tiles, buttons) comes from one icon
-set ([lucide-react](https://lucide.dev)) instead of emoji. The `Sellsy`
-mark is a shopping-bag glyph in a rounded amber badge
-(`components/wordmark.jsx`), reused as the browser favicon
-(`frontend/app/icon.svg`).
-
-**Why it's built this way:** the AI agent is advisory only. It can
-recommend and explain, but every product ID and price it mentions is
-re-validated against the database before being shown to you, and it never
-touches carts, payments, or money directly. A separate, deterministic
-guardrail engine — plain Python, no LLM — is what actually decides whether
-an order is allowed to proceed to payment. See `CLAUDE.md` for the full
-list of architectural rules this project depends on.
 
 ## Revenue recovery
 
-Three things quietly leak revenue in a merchant that sells both to
-consumers and on credit to other businesses: a payment that fails and is
-never retried, a checkout that's abandoned before approval, and a B2B
-invoice that goes past its due date unnoticed. Sellsy AI's recovery
-engine turns all three into tracked, bounded recovery cases instead of
-silent losses — one detection → diagnosis → escalation pipeline, not
-three separate ones.
+Three leak points, one pipeline: a failed payment, an abandoned
+checkout, and an overdue B2B invoice all become a tracked
+`RecoveryCase`, not a silent loss.
 
-1. **Detect** — `RecoveryService.scan()` looks for failed `Payment` rows,
-   `PaymentProposal`s left in `proposed` status past a staleness window
-   (30 minutes by default), and `Invoice`s past their due date with no
-   payment recorded, and opens a `RecoveryCase` for each one that isn't
-   already being worked. A plain database scan — no LLM involved in
-   deciding what counts as at risk.
-2. **Diagnose** — every case gets a root cause. Where it's already known
-   from the data (an abandoned checkout has no failure to explain; an
-   overdue invoice is overdue by definition; this app's own
-   signature-verification failure is always worded the same way), it's
-   set deterministically. Only a messy gateway decline string goes to the
-   LLM to classify, into a fixed set of categories (`card_declined`,
-   `insufficient_funds`, `gateway_error`, `signature_mismatch`,
-   `checkout_abandoned`, `invoice_overdue`, `unknown`) — and a known
-   cause always overrides whatever the model guesses.
-3. **Intervene** — the same LLM call drafts a short recovery message,
-   grounded only in the case's real facts (amount, item names, or for an
-   invoice: the invoice number, customer, and days overdue — never an
-   invented price, discount, late fee, or legal threat), in one of three
-   tones chosen per batch run: **Standard** (plain English), **Hinglish**
-   (casual Hindi-English chat copy), or **Hinglish voice** — a spoken
-   phone-call script instead of a text message. A consumer nudge and a
-   B2B chaser use different prompt framing (a checkout nudge vs. a
-   professional accounts-receivable reminder) even at the same tone
-   setting — see `RECEIVABLE_TONE_INSTRUCTIONS` in
-   `app/agents/recovery_prompts.py`. The recovery console can read a
-   voice-tone message aloud in-browser via the Web Speech API as a
-   preview of what an outbound call would say — no real phone call is
-   placed. If the LLM call itself fails, a templated fallback message is
-   used instead of failing the whole batch — a diagnosis, never a charge,
-   depends on the model being available.
-4. **Escalate, or stop** — `app/policies/recovery_policy.py` is the
-   deterministic sibling of the payment guardrail engine: no LLM. It
-   enforces a fixed escalation ladder (nudge → nudge → final notice, with
-   a 24-hour cooldown between attempts) and stops a case outright if the
-   customer opts out or the attempt limit is reached. The amount ceiling
-   is source-aware: a consumer case is capped at the same
-   `MAX_TRANSACTION_AMOUNT_INR` the payment guardrails enforce, while a
-   B2B invoice — issued directly by the merchant, not built from an
-   AI-suggested cart — gets its own, higher
-   `RECOVERY_RECEIVABLE_MAX_AMOUNT_INR` ceiling before it requires human
-   review instead of an automated chaser.
-5. **Promise-to-pay** — a nudge can be answered with "remind me in N
-   days" (`POST /api/recovery/{id}/promise`), which sets
-   `RecoveryCase.promised_retry_at`. The escalation ladder checks this
-   before sending the next nudge, so a stated promise is actually
-   honored, not just logged. The **Promise tracker** tab on `/recovery`
-   measures what happened next: every promise is derived (no extra
-   column, no state to drift out of sync) into `pending`, `overdue`,
-   `kept` (paid by the promised date), `kept_late`, or `broken` (the case
-   closed without ever being paid) — with a keep rate across the whole
-   batch, not just a count of promises made.
-6. **Close the loop** — a consumer case closes the same way:
-   `PaymentService.verify_payment`, the same method that clears the cart
-   on a real success, checks for an open recovery case on that session
-   and marks it `recovered` with the real amount paid. A B2B case closes
-   when the invoice is marked paid (`POST
-   /api/receivables/{id}/mark-paid`) — realistically, most B2B
-   receivables settle by bank transfer outside any checkout flow, so this
-   is a manual "record payment" action rather than a forced fit into the
-   Razorpay consumer checkout API. Recovery never bypasses the guardrail
-   → proposal → approval → verify chain for a real charge — it only ever
-   points a customer back to a normal checkout, or a business back to
-   paying its invoice.
+1. **Detect** — a plain DB scan (no LLM) for failed payments, stale
+   proposals, and overdue invoices.
+2. **Diagnose** — root cause is set deterministically wherever it's
+   already knowable (abandoned = no failure; overdue = overdue by
+   definition); only a messy gateway error string goes to the LLM, and
+   only to classify into a fixed enum.
+3. **Intervene** — the LLM drafts one message, grounded only in real
+   facts, in **Standard**, **Hinglish**, or **Hinglish voice** (a spoken
+   script, playable in-browser via the Web Speech API — no real call is
+   placed). A consumer nudge and a B2B chaser are framed differently at
+   the same tone.
+4. **Escalate or stop** — `recovery_policy.py`, deterministic, no LLM:
+   a fixed ladder with cooldowns, and a source-aware amount ceiling
+   (consumer vs. merchant-entered invoice) before it hands off to a
+   human.
+5. **Promise-to-pay** — "remind me in N days" pauses the ladder, and
+   the **Promise tracker** measures what actually happened:
+   pending / overdue / kept / kept late / broken.
+6. **Close the loop** — a real payment success or a marked-paid invoice
+   flips the case to `recovered` with the real amount — never bypassing
+   the guardrail → approve → verify chain.
 
-**Try it:**
-
+**Try it** (after the catalog is seeded):
 ```bash
-# after the product catalog is seeded
-python -m app.seed.seed_recovery_scenarios   # creates demo failed/abandoned cases
-python -m app.seed.seed_receivables          # creates demo B2B invoices, some already overdue
+python -m app.seed.seed_recovery_scenarios   # demo failed/abandoned cases
+python -m app.seed.seed_receivables          # demo B2B invoices, some overdue
 ```
-
-Then open **Recovery** in the nav bar — the **Recovery cases** tab has
-the scan/run-batch controls, and the **Receivables** tab lets you issue a
-new invoice or mark one paid — and watch the at-risk/recovered totals and
-per-case timelines update.
+Then open **Recovery** in the nav and scan / run a batch.
 
 ## Stack
 
-| Layer | Tech |
-|---|---|
-| Frontend | Next.js (App Router) + Tailwind CSS v4 + shadcn/ui + lucide-react icons |
-| Backend | FastAPI, service-oriented architecture |
-| Database | PostgreSQL + SQLAlchemy + Alembic migrations |
-| AI | Groq API (`openai/gpt-oss-120b`, JSON-mode structured output) |
-| Payments | Razorpay, test mode |
+Next.js (App Router) + Tailwind v4 + shadcn/ui + lucide-react · FastAPI
+(service-oriented) · PostgreSQL + SQLAlchemy + Alembic · Groq (JSON-mode)
+· Razorpay (test mode)
 
 ---
 
-## Prerequisites
+## Setup
 
-- **Node.js** 18+ and npm
-- **Python** 3.11+
-- **PostgreSQL** 14+ (local install, or a free hosted instance like
-  [Neon](https://neon.tech) or [Supabase](https://supabase.com))
-- A free **Groq API key** — [console.groq.com/keys](https://console.groq.com/keys)
-- Free **Razorpay test-mode keys** — [dashboard.razorpay.com](https://dashboard.razorpay.com)
-  (Test Mode toggle, top-right → Settings → API Keys)
+**Prerequisites**: Node 18+, Python 3.11+, PostgreSQL 14+ (or free
+[Neon](https://neon.tech)/[Supabase](https://supabase.com)), a free
+[Groq key](https://console.groq.com/keys), Razorpay test-mode keys
+([dashboard](https://dashboard.razorpay.com), Test Mode → API Keys).
 
----
-
-## 1. Start PostgreSQL
-
-**macOS (Homebrew):**
+### 1. Database
 ```bash
-brew install postgresql@16
-brew services start postgresql@16
+brew install postgresql@16 && brew services start postgresql@16   # macOS
 psql postgres -c "CREATE USER sellsy WITH PASSWORD 'sellsy_dev_pw';"
 psql postgres -c "CREATE DATABASE sellsy_db OWNER sellsy;"
 ```
+Or skip this and use a hosted Postgres connection string directly.
 
-**Ubuntu/Debian:**
-```bash
-sudo apt update && sudo apt install postgresql postgresql-contrib
-sudo service postgresql start
-sudo -u postgres psql -c "CREATE USER sellsy WITH PASSWORD 'sellsy_dev_pw';"
-sudo -u postgres psql -c "CREATE DATABASE sellsy_db OWNER sellsy;"
-```
-
-**Or use a free hosted Postgres** (Neon/Supabase) and skip straight to
-using its connection string as `DATABASE_URL` below.
-
----
-
-## 2. Backend setup
-
+### 2. Backend
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate       
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-> **Always run `python -m alembic ...` and `python -m uvicorn ...`**
-> rather than bare `alembic`/`uvicorn`. On some systems the bare command
-> resolves to a different, global Python install even inside an activated
-> virtualenv, which leads to confusing "module not found" errors. Using
-> `python -m` guarantees it runs in the interpreter you just activated.
-
-### Environment variables
-
-```bash
-cp .env.example .env
-```
-
-Edit `backend/.env`:
-
-```env
-DATABASE_URL=postgresql://sellsy:sellsy_dev_pw@localhost:5432/sellsy_db
-FRONTEND_ORIGINS=http://localhost:3000
-
-AI_PROVIDER=groq
-GROQ_API_KEY=gsk_your_real_key_here
-GROQ_MODEL=openai/gpt-oss-120b
-
-RAZORPAY_KEY_ID=rzp_test_your_real_key_here
-RAZORPAY_KEY_SECRET=your_real_secret_here
-
-MAX_TRANSACTION_AMOUNT_INR=200000
-```
-
-**Never commit your real `.env`** — it's gitignored. Only `.env.example`
-(with placeholders) is tracked.
-
-### Run migrations
-
-```bash
+cp .env.example .env   # fill in DATABASE_URL, GROQ_API_KEY, RAZORPAY_KEY_ID/SECRET
 python -m alembic upgrade head
+python -m app.seed.seed_catalog --reset   # 41 products, 7 categories
+python -m uvicorn app.main:app --reload   # http://localhost:8000
 ```
+Always use `python -m alembic` / `python -m uvicorn`, not the bare
+commands — some shells resolve those to a different Python install.
 
-Creates all tables: `products`, `carts`, `cart_items`,
-`conversation_messages`, `payment_proposals`, `payments`,
-`recovery_cases`, `recovery_actions`, `invoices`.
-
-### Seed the product catalog
-
-```bash
-python -m app.seed.seed_catalog --reset
-```
-
-Loads 41 synthetic products across 7 categories (laptops, smartphones,
-headphones, keyboards, mice, monitors, accessories), cross-linked with
-real upsell/cross-sell/compatible-product relationships. Safe to re-run —
-it skips seeding if products already exist, unless you pass `--reset`.
-
-To also seed demo failed-payment/abandoned-checkout data for the
-revenue-recovery flow, see **Try it** under [Revenue recovery](#revenue-recovery) below.
-
-### Start the backend
-
-```bash
-python -m uvicorn app.main:app --reload
-```
-
-Runs at **http://localhost:8000**. Interactive API docs at
-**http://localhost:8000/docs**.
-
-### Verify it works
-
-```bash
-curl http://localhost:8000/health
-# {"status":"ok","service":"sellsy-backend","database":"ok"}
-
-curl http://localhost:8000/api/products | python3 -m json.tool
-```
-
----
-
-## 3. Frontend setup
-
+### 3. Frontend
 ```bash
 cd frontend
 npm install
-cp .env.local.example .env.local
+cp .env.local.example .env.local   # NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+npm run dev   # http://localhost:3000
 ```
 
-`frontend/.env.local` needs one variable (safe to expose to the browser —
-it's a URL, not a secret):
-
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-```
-
-```bash
-npm run dev
-```
-
-Runs at **http://localhost:3000**.
-
----
+**Verify**: `curl http://localhost:8000/health` should return
+`{"status":"ok",...}`.
 
 ## Trying the full flow
 
-1. Open `/` — click one of the example prompts, or the **Shop** link in
-   the nav bar
-2. Ask for something — e.g. *"I need a laptop for college under ₹50,000"*
-3. Click **Add to cart** on a recommendation (and on the suggested add-on,
-   if one appears) — the **Cart** link in the nav bar updates live with
-   the item count
-4. Click **Cart** in the nav, then **Review & pay**
-5. Read the order summary, click **Approve payment**
-6. Click **Pay ₹X** — Razorpay's test checkout opens
-
-   **Netbanking:** pick any bank, click **Success** on the mock page.
-   (UPI test-mode simulation isn't available in Razorpay Checkout
-   currently — Netbanking is the most reliable test path.)
-7. You're redirected to `/order/[id]` showing the confirmed, stamped
-   receipt. Your cart is now empty — go back to **Cart** to confirm.
-8. Check **Dashboard** to see the conversation/upsell/payment counters
-   update, and **Audit trail** to see the exact event-by-event history of
-   everything that just happened, in order.
-
----
+Open `/chat` → ask for something → **Add to cart** → **Cart** →
+**Review & pay** → **Approve payment** → **Pay** (Razorpay test
+checkout: use **Netbanking**, click **Success** — UPI isn't simulatable
+in test mode) → redirected to the receipt, cart now empty. Check
+**Dashboard** and **Audit trail** to see it all recorded.
 
 ## How the safety model works
 
-**The AI never touches money or the database directly.** Every chat
-response is parsed as structured JSON and validated: any product ID the
-model mentions that doesn't exist in the catalog is silently dropped and
-logged, never shown to you. Prices and names always come from a fresh
-database read, never from the model's own text.
-
-**A separate, deterministic guardrail engine decides whether a payment can
-proceed** (`backend/app/policies/guardrail_engine.py`) — plain Python, no
-LLM involved:
-- The cart isn't empty
-- The total is within `MAX_TRANSACTION_AMOUNT_INR`
-- Every item's quantity still fits current stock (re-checked at proposal
-  time, since a cart can sit around while stock changes)
-
-**Payments require explicit approval and are verified twice:** once when
-Razorpay creates the order (server-side, using a total computed by
-`CartService` from the database — never a number the client sent), and
-again after checkout completes, when the payment's cryptographic signature
-is independently verified server-side before anything is marked as paid.
-
-**A successful payment clears the cart.** Once a payment is verified, its
-items are removed so they don't linger and reappear on your next visit.
-The order itself isn't lost — `PaymentProposal.cart_snapshot` freezes
-exactly what was ordered, independent of the live cart, which is what
-`/order/[id]` and the audit trail read from.
-
-**Failures are explicit, not silent.** If Razorpay order creation fails,
-that's recorded with a clear reason, nothing is retried automatically, and
-no duplicate order is created from the same proposal.
-
-**Recovery decisions split the same way money-and-database access does.**
-Detecting at-risk revenue, deciding when to escalate, and deciding when
-to stop are all plain Python in `recovery_policy.py` — the same
-deterministic pattern as the payment guardrails, and for the same reason:
-those are decisions an auditor needs to be able to read without wondering
-what the model would have done differently. The LLM's only role is
-classifying an already-unclear failure reason and drafting nudge copy —
-both re-validated (a fixed cause enum, a length cap, no invented prices)
-before anything is stored or shown.
-
-**Nothing is a dead end.** Every page shares one persistent navigation bar
-— there's always a visible way to get to the shop, your cart, the merchant
-dashboard, the revenue-recovery console, or the audit trail, without
-needing to know or type a URL.
+The AI never touches money or the database directly — every fact it
+states is re-validated against Postgres before you see it, and a
+separate deterministic guardrail engine (`guardrail_engine.py`, zero
+LLM) decides whether a payment can proceed: cart not empty, under
+`MAX_TRANSACTION_AMOUNT_INR`, stock re-checked at proposal time.
+Payments are verified twice (order creation + signature check, both
+server-side); failures are recorded with a reason, never silently
+retried. The recovery engine follows the identical split — see
+`CLAUDE.md` for the full architectural rules.
 
 ---
 
-## Database migrations (Alembic)
-
-```bash
-cd backend
-# after changing/adding a model in app/models/:
-python -m alembic revision --autogenerate -m "describe your change"
-# review the generated file in alembic/versions/, then:
-python -m alembic upgrade head
-```
-
-Roll back the last migration: `python -m alembic downgrade -1`
-
----
-
-## Environment variables reference
+## Environment variables
 
 ### Backend (`backend/.env`)
 | Variable | Required | Description |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `FRONTEND_ORIGINS` | Yes | Comma-separated allowed CORS origins |
-| `GROQ_API_KEY` | Yes (for chat) | Groq API key |
+| `GROQ_API_KEY` | Yes | Groq API key |
 | `GROQ_MODEL` | No | Defaults to `openai/gpt-oss-120b` |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Yes (for payment) | Razorpay test-mode credentials |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Yes | Razorpay test-mode credentials |
 | `MAX_TRANSACTION_AMOUNT_INR` | No | Guardrail ceiling, defaults to 200000 |
-| `RECOVERY_MAX_ATTEMPTS` | No | Max recovery nudges per case before it expires, defaults to 3 |
-| `RECOVERY_COOLDOWN_HOURS` | No | Minimum hours between recovery attempts, defaults to 24 |
-| `RECOVERY_STALE_PROPOSAL_MINUTES` | No | How long a proposal sits unapproved before it counts as an abandoned checkout, defaults to 30 |
-| `RECOVERY_RECEIVABLE_MAX_AMOUNT_INR` | No | Ceiling for automated B2B invoice chasing (separate from the consumer ceiling), defaults to 1000000 |
-| `ENVIRONMENT`, `LOG_LEVEL` | No | `development`/`production`, Python log level |
+| `RECOVERY_MAX_ATTEMPTS` | No | Defaults to 3 |
+| `RECOVERY_COOLDOWN_HOURS` | No | Defaults to 24 |
+| `RECOVERY_STALE_PROPOSAL_MINUTES` | No | Defaults to 30 |
+| `RECOVERY_RECEIVABLE_MAX_AMOUNT_INR` | No | B2B ceiling, defaults to 1000000 |
+| `ENVIRONMENT`, `LOG_LEVEL` | No | `development`/`production`, log level |
 
 ### Frontend (`frontend/.env.local`)
 | Variable | Required | Description |
 |---|---|---|
 | `NEXT_PUBLIC_API_BASE_URL` | Yes | Base URL of the FastAPI backend |
 
-No secrets are hardcoded anywhere in this repo. `.env` and `.env.local`
-are gitignored; only `.env.example` / `.env.local.example` templates are
-committed.
-
----
+`.env`/`.env.local` are gitignored; only the `.example` templates are committed.
 
 ## Troubleshooting
 
-**`ModuleNotFoundError: No module named 'psycopg2'` despite it being
-installed** — you're likely running the global `alembic`/`uvicorn`
-instead of your venv's copy. Use `python -m alembic ...` / `python -m
-uvicorn ...` instead of the bare commands.
-
-**Groq returns `model_not_found`** — Groq periodically deprecates models.
-Check [console.groq.com/docs/models](https://console.groq.com/docs/models)
-for the current list and update `GROQ_MODEL` in `.env`.
-
-**Razorpay Checkout says "International cards are not supported"** — use
-the documented domestic test card (`4111 1111 1111 1111`), or switch to
-**Netbanking** in the checkout modal and click "Success" on the mock bank
-page — this sidesteps card-network classification entirely and is the
-most reliable way to test the full flow.
-
-**Alembic: `KeyError` on a revision hash / broken migration chain** — make
-sure every file in `backend/alembic/versions/` is present; a missing
-earlier migration breaks the whole chain even if your database already
-has those tables.
-
+- **`ModuleNotFoundError: psycopg2`** — you're on the global Python, not
+  your venv's. Use `python -m alembic`/`python -m uvicorn`.
+- **Groq `model_not_found`** — check [console.groq.com/docs/models](https://console.groq.com/docs/models), update `GROQ_MODEL`.
+- **Razorpay "International cards not supported"** — use Netbanking → **Success**.
+- **Alembic `KeyError` on a revision hash** — a file is missing from
+  `backend/alembic/versions/`.

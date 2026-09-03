@@ -6,7 +6,7 @@ import { History, LayoutDashboard, LifeBuoy, Menu, MessageCircle, ShoppingCart, 
 import { useEffect, useState } from "react";
 
 import { Wordmark } from "@/components/wordmark";
-import { api } from "@/lib/api";
+import { api, CART_UPDATED_EVENT } from "@/lib/api";
 import { getStoredCartId } from "@/lib/cart";
 import { cn } from "@/lib/utils";
 
@@ -24,12 +24,21 @@ export function NavBar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
-    const cartId = getStoredCartId();
-    if (!cartId) return;
-    const refresh = () => api.getCart(cartId).then((cart) => setCartCount(cart.items.length)).catch(() => {});
+    const refresh = () => {
+      const cartId = getStoredCartId();
+      if (!cartId) {
+        setCartCount(0);
+        return;
+      }
+      api.getCart(cartId).then((cart) => setCartCount(cart.items.length)).catch(() => {});
+    };
     refresh();
     window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    window.addEventListener(CART_UPDATED_EVENT, refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(CART_UPDATED_EVENT, refresh);
+    };
   }, [pathname]);
 
   return (

@@ -1,9 +1,13 @@
 """
 ChatService orchestrates a single chat turn:
 
-  1. Retrieve a relevant candidate set of products from the DB (retrieval.py).
+  1. Load the session's recent history (ConversationRepository) and use it,
+     together with the new message, to retrieve a relevant candidate set of
+     products from the DB (retrieval.py) — not just the latest message in
+     isolation, so a category mentioned a few turns ago still narrows results.
   2. Build a system prompt grounded in those real products (prompts.py).
-  3. Call the LLM provider and get back raw JSON text.
+  3. Call the LLM provider with the full recent conversation (not just this
+     turn) and get back raw JSON text.
   4. Parse + validate that JSON against the AgentRawOutput schema.
   5. Re-validate every product ID against the database — anything the LLM
      mentions that doesn't correspond to a real product is silently
@@ -41,13 +45,19 @@ class ChatService:
         self.llm_provider = llm_provider or get_llm_provider()
 
     async def handle_message(self, session_id: str, user_message: str) -> ChatResponse:
+        history = self.conversation_repo.get_recent(session_id, limit=MAX_HISTORY_MESSAGES)
+
         # Persist the user's message immediately, regardless of what happens next.
         self.conversation_repo.add_message(session_id, role="user", content=user_message)
 
-        candidates = retrieve_candidate_products(self.db, user_message)
+        retrieval_text = " ".join(
+            [m.content for m in history if m.role == "user"] + [user_message]
+        )
+        candidates = retrieve_candidate_products(self.db, retrieval_text)
         system_prompt = build_system_prompt(candidates)
 
-        raw_json = await self.llm_provider.complete_json(system_prompt, user_message)
+        llm_messages = self._build_llm_messages(history, user_message)
+        raw_json = await self.llm_provider.complete_json(system_prompt, llm_messages)
         agent_output = self._parse_agent_output(raw_json)
 
         validated_product_ids = self._validate_product_ids(agent_output.recommended_product_ids)
@@ -77,6 +87,14 @@ class ChatService:
         )
 
         return response
+
+    def _build_llm_messages(self, history: list, user_message: str) -> list[dict]:
+        role_map = {"user": "user", "agent": "assistant"}
+        messages = [
+            {"role": role_map.get(m.role, "user"), "content": m.content} for m in history
+        ]
+        messages.append({"role": "user", "content": user_message})
+        return messages
 
     def _parse_agent_output(self, raw_json: str) -> AgentRawOutput:
         try:
