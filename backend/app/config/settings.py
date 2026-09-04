@@ -11,34 +11,27 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # --- App ---
     app_name: str = "Sellsy AI API"
     environment: str = "development"
     log_level: str = "INFO"
 
-    # --- Database ---
     database_url: str
 
-    # --- CORS ---
     # Comma-separated list of allowed origins, e.g. "http://localhost:3000,https://myapp.vercel.app"
     frontend_origins: str = "http://localhost:3000"
 
-    # --- AI provider ---
     ai_provider: str = "groq"
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"
 
-    # --- Razorpay ---
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""
 
-    # --- Guardrail / policy engine ---
     # Safety ceiling for a single transaction, in rupees; proposals above
     # this are rejected outright. Prevents a hallucinated or manipulated
     # cart from becoming a large real charge.
     max_transaction_amount_inr: float = 200000.0
 
-    # --- Revenue recovery engine ---
     recovery_max_attempts: int = 3
     recovery_cooldown_hours: int = 24
     recovery_stale_proposal_minutes: int = 30

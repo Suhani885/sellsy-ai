@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { SendHorizonal, X } from "lucide-react";
+import { Package, SendHorizonal, X } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ function toDisplayMessage(m) {
     content: m.content,
     recommended_products: m.structured_output?.recommended_products || [],
     upsell: m.structured_output?.upsell || null,
+    reasoning: m.structured_output?.reasoning || "",
   };
 }
 
@@ -131,6 +133,7 @@ function ChatPageInner() {
           content: response.message_to_user,
           recommended_products: response.recommended_products,
           upsell: response.upsell,
+          reasoning: response.reasoning,
         },
       ]);
     } catch (err) {
@@ -176,8 +179,19 @@ function ChatPageInner() {
   return (
     <main className="mx-auto flex h-[calc(100dvh-57px)] w-full max-w-2xl flex-col px-4 sm:px-6">
       <div className="border-b border-border py-4">
-        <h1 className="text-lg font-semibold tracking-tight">Shopping assistant</h1>
-        <p className="text-xs text-muted-foreground">Grounded in real stock and prices — never guessed.</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">Shopping assistant</h1>
+            <p className="text-xs text-muted-foreground">Grounded in real stock and prices — never guessed.</p>
+          </div>
+          <Link
+            href="/catalog"
+            className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+          >
+            <Package className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            Browse all
+          </Link>
+        </div>
         {categories.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {categories.map((category) => (
@@ -306,22 +320,27 @@ function ChatTurn({ message, cartActionState, onAddToCart }) {
       <p className="text-sm leading-relaxed">{message.content}</p>
 
       {message.recommended_products?.length > 0 && (
-        <ShelfRow>
-          {message.recommended_products.map((product) => (
-            <ShelfCard
-              key={product.id}
-              product={product}
-              footer={
-                <AddToCartButton
-                  product={product}
-                  reason="user_selected"
-                  cartActionState={cartActionState}
-                  onAddToCart={onAddToCart}
-                />
-              }
-            />
-          ))}
-        </ShelfRow>
+        <>
+          <ShelfRow>
+            {message.recommended_products.map((product) => (
+              <ShelfCard
+                key={product.id}
+                product={product}
+                footer={
+                  <AddToCartButton
+                    product={product}
+                    reason="user_selected"
+                    cartActionState={cartActionState}
+                    onAddToCart={onAddToCart}
+                  />
+                }
+              />
+            ))}
+          </ShelfRow>
+          {message.reasoning && (
+            <p className="text-xs text-muted-foreground">{message.reasoning}</p>
+          )}
+        </>
       )}
 
       {message.upsell && (

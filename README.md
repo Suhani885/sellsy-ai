@@ -14,8 +14,11 @@ win the revenue back.
 
 ## What it does
 
-1. **Ask** — "a laptop for college under ₹50,000." The assistant
-   remembers the conversation and searches a real product catalog.
+1. **Ask, or just browse** — "a laptop for college under ₹50,000" in
+   `/chat`, or search and filter the same catalog directly on `/catalog`
+   if you'd rather not describe what you want. The assistant remembers
+   the conversation and explains why it picked each option, not just
+   what it picked.
 2. **Get grounded recommendations** — every product, price, and stock
    count is re-validated against Postgres. The AI can suggest; it can't
    invent a product or a price.

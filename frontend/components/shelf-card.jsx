@@ -1,13 +1,20 @@
+import { cn } from "@/lib/utils";
+
 function capitalize(word) {
   if (!word) return "";
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-export function ShelfCard({ product, footer }) {
+export function ShelfCard({ product, footer, className }) {
   const inStock = product.inventory > 0;
 
   return (
-    <div className="flex w-56 shrink-0 snap-start flex-col gap-3 rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md sm:w-60">
+    <div
+      className={cn(
+        "flex w-56 shrink-0 snap-start flex-col gap-3 rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md sm:w-60",
+        className
+      )}
+    >
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {capitalize(product.category)}

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.product import Product
@@ -25,7 +25,13 @@ class ProductRepository:
 
         if search:
             like_pattern = f"%{search.lower()}%"
-            stmt = stmt.where(Product.name.ilike(like_pattern))
+            stmt = stmt.where(
+                or_(
+                    Product.name.ilike(like_pattern),
+                    Product.category.ilike(like_pattern),
+                    Product.description.ilike(like_pattern),
+                )
+            )
 
         stmt = stmt.order_by(Product.id).offset(offset).limit(limit)
         return list(self.db.execute(stmt).scalars().all())

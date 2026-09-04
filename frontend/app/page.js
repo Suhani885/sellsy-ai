@@ -88,12 +88,20 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <Link
-            href="/chat"
-            className="w-fit rounded-md bg-primary px-5 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:py-2.5"
-          >
-            Start shopping
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/chat"
+              className="w-fit rounded-md bg-primary px-5 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:py-2.5"
+            >
+              Start shopping
+            </Link>
+            <Link
+              href="/catalog"
+              className="w-fit rounded-md px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary sm:py-2.5"
+            >
+              Browse the full catalog
+            </Link>
+          </div>
         </div>
 
         <div className="grid gap-6 sm:grid-cols-3 sm:gap-8">

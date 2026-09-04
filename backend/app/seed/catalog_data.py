@@ -8,7 +8,6 @@ references to actual product IDs after insert.
 """
 
 CATALOG = [
-    # ---------------- LAPTOPS ----------------
     {
         "sku": "laptop-acer-aspire3",
         "name": "Acer Aspire 3 (Ryzen 5, 8GB/512GB)",
@@ -88,7 +87,6 @@ CATALOG = [
         "cross_sell_products": ["mouse-logitech-m221", "backpack-hp-15"],
     },
 
-    # ---------------- SMARTPHONES ----------------
     {
         "sku": "phone-samsung-galaxy-m34",
         "name": "Samsung Galaxy M34 5G (8GB/128GB)",
@@ -168,7 +166,6 @@ CATALOG = [
         "cross_sell_products": ["phone-case-spigen", "screen-protector-generic"],
     },
 
-    # ---------------- HEADPHONES / EARBUDS ----------------
     {
         "sku": "earbuds-boat-airdopes",
         "name": "boAt Airdopes 141",
@@ -248,7 +245,6 @@ CATALOG = [
         "cross_sell_products": [],
     },
 
-    # ---------------- KEYBOARDS ----------------
     {
         "sku": "keyboard-logitech-mk270",
         "name": "Logitech MK270 Wireless Combo (Keyboard + Mouse)",
@@ -315,7 +311,6 @@ CATALOG = [
         "cross_sell_products": ["mouse-logitech-mx-anywhere3"],
     },
 
-    # ---------------- MICE ----------------
     {
         "sku": "mouse-logitech-m221",
         "name": "Logitech M221 Silent Wireless Mouse",
@@ -382,7 +377,6 @@ CATALOG = [
         "cross_sell_products": [],
     },
 
-    # ---------------- MONITORS ----------------
     {
         "sku": "monitor-lg-24",
         "name": "LG 24\" FHD IPS Monitor",
@@ -449,7 +443,6 @@ CATALOG = [
         "cross_sell_products": ["keyboard-logitech-mk270"],
     },
 
-    # ---------------- ACCESSORIES ----------------
     {
         "sku": "backpack-hp-15",
         "name": "HP 15.6\" Laptop Backpack",

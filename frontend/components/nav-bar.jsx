@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, LayoutDashboard, LifeBuoy, Menu, MessageCircle, ShoppingCart, X } from "lucide-react";
+import {
+  History,
+  LayoutDashboard,
+  LifeBuoy,
+  Menu,
+  MessageCircle,
+  Package,
+  ShoppingCart,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Wordmark } from "@/components/wordmark";
@@ -12,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/chat", label: "Shop", icon: MessageCircle },
+  { href: "/catalog", label: "Catalog", icon: Package },
   { href: "/cart", label: "Cart", icon: ShoppingCart },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/recovery", label: "Recovery", icon: LifeBuoy },
