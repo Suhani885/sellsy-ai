@@ -9,4 +9,5 @@ from app.models.conversation import ConversationMessage  # noqa: F401
 from app.models.payment import PaymentProposal  # noqa: F401
 from app.models.transaction import Payment  # noqa: F401
 from app.models.receivable import Invoice  # noqa: F401
+from app.models.care_plan import CarePlan  # noqa: F401
 from app.models.recovery import RecoveryCase, RecoveryAction  # noqa: F401

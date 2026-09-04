@@ -21,12 +21,14 @@ class RecoveryRepository:
         session_id: str | None,
         amount_at_risk: float,
         invoice_id: int | None = None,
+        plan_id: int | None = None,
     ) -> RecoveryCase:
         case = RecoveryCase(
             source_type=source_type,
             payment_id=payment_id,
             proposal_id=proposal_id,
             invoice_id=invoice_id,
+            plan_id=plan_id,
             cart_id=cart_id,
             session_id=session_id,
             amount_at_risk=amount_at_risk,
@@ -65,6 +67,13 @@ class RecoveryRepository:
     def has_open_case_for_invoice(self, invoice_id: int) -> bool:
         stmt = select(RecoveryCase).where(
             RecoveryCase.invoice_id == invoice_id,
+            RecoveryCase.status.in_(OPEN_STATUSES),
+        )
+        return self.db.execute(stmt).scalars().first() is not None
+
+    def has_open_case_for_plan(self, plan_id: int) -> bool:
+        stmt = select(RecoveryCase).where(
+            RecoveryCase.plan_id == plan_id,
             RecoveryCase.status.in_(OPEN_STATUSES),
         )
         return self.db.execute(stmt).scalars().first() is not None
@@ -184,6 +193,31 @@ class RecoveryRepository:
                 action_type="recovered",
                 tone=None,
                 message=f"Invoice paid — ₹{recovered_amount:,.2f} recovered.",
+            )
+        )
+        self.db.commit()
+
+    def mark_open_case_recovered_for_plan(self, plan_id: int, recovered_amount: float) -> None:
+        """Same idea again, keyed by care plan — called when a subscription
+        renewal is successfully retried, so the mandate retry sequencer's
+        loop closes too."""
+        stmt = select(RecoveryCase).where(
+            RecoveryCase.plan_id == plan_id,
+            RecoveryCase.status.in_(OPEN_STATUSES),
+        )
+        case = self.db.execute(stmt).scalars().first()
+        if case is None:
+            return
+
+        case.status = "recovered"
+        case.recovered_amount = recovered_amount
+        case.resolved_at = datetime.now(timezone.utc)
+        self.db.add(
+            RecoveryAction(
+                case_id=case.id,
+                action_type="recovered",
+                tone=None,
+                message=f"Renewal succeeded — ₹{recovered_amount:,.2f} recovered.",
             )
         )
         self.db.commit()

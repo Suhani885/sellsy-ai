@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     analytics,
     audit,
+    care_plan,
     cart,
     chat,
     health,
@@ -23,3 +24,4 @@ api_router.include_router(audit.router)
 api_router.include_router(analytics.router)
 api_router.include_router(recovery.router)
 api_router.include_router(receivable.router)
+api_router.include_router(care_plan.router)

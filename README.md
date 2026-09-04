@@ -4,11 +4,11 @@ An AI shopping assistant for an electronics merchant, extended with a
 revenue-recovery engine. Ask for what you need in plain language, get
 real in-stock recommendations, and approve a Razorpay (test mode)
 payment yourself — nothing is charged automatically. When a payment
-fails, a checkout is abandoned, or a B2B invoice goes overdue, a
-separate, bounded recovery pipeline detects it, diagnoses why, and
-sends a tracked follow-up to win the revenue back.
+fails, a checkout is abandoned, a B2B invoice goes overdue, or a
+subscription's auto-renewal lapses, a separate, bounded recovery
+pipeline detects it, diagnoses why, and sends a tracked follow-up to
+win the revenue back.
 
-Built for Razorpay's **AI Revenue Recovery** track.
 
 **Live demo:** [sellsy-ai.vercel.app](https://sellsy-ai.vercel.app)
 
@@ -29,36 +29,40 @@ Built for Razorpay's **AI Revenue Recovery** track.
 
 ## Revenue recovery
 
-Three leak points, one pipeline: a failed payment, an abandoned
-checkout, and an overdue B2B invoice all become a tracked
-`RecoveryCase`, not a silent loss.
+Four leak points, one pipeline: a failed payment, an abandoned checkout,
+an overdue B2B invoice, and a lapsed subscription renewal all become a
+tracked `RecoveryCase`, not a silent loss.
 
 1. **Detect** — a plain DB scan (no LLM) for failed payments, stale
-   proposals, and overdue invoices.
+   proposals, overdue invoices, and Care Plans (device protection
+   subscriptions) past their renewal date.
 2. **Diagnose** — root cause is set deterministically wherever it's
-   already knowable (abandoned = no failure; overdue = overdue by
+   already knowable (abandoned = no failure; overdue/lapsed = overdue by
    definition); only a messy gateway error string goes to the LLM, and
    only to classify into a fixed enum.
 3. **Intervene** — the LLM drafts one message, grounded only in real
    facts, in **Standard**, **Hinglish**, or **Hinglish voice** (a spoken
    script, playable in-browser via the Web Speech API — no real call is
-   placed). A consumer nudge and a B2B chaser are framed differently at
-   the same tone.
-4. **Escalate or stop** — `recovery_policy.py`, deterministic, no LLM:
-   a fixed ladder with cooldowns, and a source-aware amount ceiling
-   (consumer vs. merchant-entered invoice) before it hands off to a
-   human.
+   placed). A consumer nudge, a B2B chaser, and a subscription-renewal
+   message are each framed differently at the same tone.
+4. **Escalate or stop** — `recovery_policy.py`, deterministic, no LLM.
+   Consumer/B2B cases follow a fixed ladder with cooldowns and a
+   source-aware amount ceiling. Subscriptions instead run a **mandate
+   retry sequencer** — a front-loaded day-0/day-2/day-5 smart-retry
+   schedule — and exhausting it doesn't just close the case, it cancels
+   the actual Care Plan (`CarePlanRepository.cancel`).
 5. **Promise-to-pay** — "remind me in N days" pauses the ladder, and
    the **Promise tracker** measures what actually happened:
    pending / overdue / kept / kept late / broken.
-6. **Close the loop** — a real payment success or a marked-paid invoice
-   flips the case to `recovered` with the real amount — never bypassing
-   the guardrail → approve → verify chain.
+6. **Close the loop** — a real payment success, a marked-paid invoice,
+   or a renewed Care Plan flips the case to `recovered` with the real
+   amount — never bypassing the guardrail → approve → verify chain.
 
 **Try it** (after the catalog is seeded):
 ```bash
 python -m app.seed.seed_recovery_scenarios   # demo failed/abandoned cases
 python -m app.seed.seed_receivables          # demo B2B invoices, some overdue
+python -m app.seed.seed_care_plans           # demo Care Plans, some lapsed
 ```
 Then open **Recovery** in the nav and scan / run a batch.
 
@@ -154,12 +158,3 @@ retried. The recovery engine follows the identical split — see
 | `NEXT_PUBLIC_API_BASE_URL` | Yes | Base URL of the FastAPI backend |
 
 `.env`/`.env.local` are gitignored; only the `.example` templates are committed.
-
-## Troubleshooting
-
-- **`ModuleNotFoundError: psycopg2`** — you're on the global Python, not
-  your venv's. Use `python -m alembic`/`python -m uvicorn`.
-- **Groq `model_not_found`** — check [console.groq.com/docs/models](https://console.groq.com/docs/models), update `GROQ_MODEL`.
-- **Razorpay "International cards not supported"** — use Netbanking → **Success**.
-- **Alembic `KeyError` on a revision hash** — a file is missing from
-  `backend/alembic/versions/`.

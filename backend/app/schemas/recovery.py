@@ -18,6 +18,7 @@ class RecoveryCaseOut(BaseModel):
     payment_id: int | None
     proposal_id: int | None
     invoice_id: int | None
+    plan_id: int | None
     cart_id: int | None
     session_id: str | None
     amount_at_risk: float

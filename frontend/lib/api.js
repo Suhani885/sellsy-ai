@@ -154,6 +154,23 @@ export const api = {
   markInvoicePaid: (invoiceId) =>
     request(`/api/receivables/${invoiceId}/mark-paid`, { method: "POST" }),
 
+  issueCarePlan: ({ customerName, customerContact, planName, covers, amountPerCycle, billingIntervalDays }) =>
+    request("/api/care-plans", {
+      method: "POST",
+      body: JSON.stringify({
+        customer_name: customerName,
+        customer_contact: customerContact || null,
+        plan_name: planName,
+        covers,
+        amount_per_cycle: amountPerCycle,
+        billing_interval_days: billingIntervalDays,
+      }),
+    }),
+
+  getCarePlans: () => request("/api/care-plans"),
+
+  renewCarePlan: (planId) => request(`/api/care-plans/${planId}/renew`, { method: "POST" }),
+
   sendChatMessage: (sessionId, message) =>
     request("/api/chat", {
       method: "POST",

@@ -10,6 +10,8 @@ import {
   IndianRupee,
   Plus,
   RadarIcon,
+  RefreshCw,
+  ShieldCheck,
   ShoppingCart,
   TrendingUp,
   Volume2,
@@ -46,6 +48,7 @@ const SOURCE_META = {
   failed_payment: { label: "Payment failed", icon: CreditCard },
   abandoned_checkout: { label: "Checkout abandoned", icon: ShoppingCart },
   overdue_invoice: { label: "Invoice overdue", icon: Building2 },
+  subscription_renewal_failed: { label: "Renewal failed", icon: RefreshCw },
 };
 
 const ROOT_CAUSE_LABELS = {
@@ -55,6 +58,7 @@ const ROOT_CAUSE_LABELS = {
   signature_mismatch: "Signature mismatch",
   checkout_abandoned: "Abandoned at checkout",
   invoice_overdue: "Invoice overdue",
+  renewal_failed: "Renewal failed",
   unknown: "Unknown",
 };
 
@@ -68,6 +72,7 @@ const TONES = [
 const TABS = [
   { value: "cases", label: "Recovery cases" },
   { value: "receivables", label: "Receivables" },
+  { value: "careplans", label: "Care plans" },
   { value: "promises", label: "Promise tracker" },
 ];
 
@@ -87,9 +92,9 @@ export default function RecoveryPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Revenue recovery</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Detects failed payments, abandoned checkouts, and overdue B2B
-          invoices, drafts a bounded recovery nudge, and tracks what
-          actually comes back.
+          Detects failed payments, abandoned checkouts, overdue B2B
+          invoices, and lapsed Care Plan renewals, drafts a bounded
+          recovery nudge, and tracks what actually comes back.
         </p>
       </div>
 
@@ -113,6 +118,7 @@ export default function RecoveryPage() {
 
       {activeTab === "cases" && <CasesPanel />}
       {activeTab === "receivables" && <ReceivablesPanel />}
+      {activeTab === "careplans" && <CarePlansPanel />}
       {activeTab === "promises" && <PromisesPanel />}
     </main>
   );
@@ -293,7 +299,8 @@ function CasesPanel() {
             <RadarIcon className="h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
             <p className="max-w-sm text-sm text-muted-foreground">
               No recovery cases yet — scan for failed payments, abandoned
-              checkouts, and overdue invoices to get started.
+              checkouts, overdue invoices, and lapsed renewals to get
+              started.
             </p>
           </div>
         )}
@@ -615,6 +622,217 @@ function ReceivablesPanel() {
                     disabled={isBusy}
                   >
                     Mark paid
+                  </Button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const EMPTY_CARE_PLAN_FORM = {
+  customerName: "",
+  customerContact: "",
+  planName: "",
+  covers: "",
+  amountPerCycle: "",
+  billingIntervalDays: "30",
+};
+
+const CARE_PLAN_STATUS_META = {
+  cancelled: { label: "Cancelled", variant: "destructive" },
+  due: { label: "Renewal due", variant: "destructive" },
+  active: { label: "Active", variant: "success" },
+};
+
+function CarePlansPanel() {
+  const [plans, setPlans] = useState([]);
+  const [form, setForm] = useState(EMPTY_CARE_PLAN_FORM);
+  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function loadPlans() {
+    setError(null);
+    try {
+      setPlans(await api.getCarePlans());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load care plans.");
+    }
+  }
+
+  useEffect(() => {
+    loadPlans();
+  }, []);
+
+  function updateField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleIssue(e) {
+    e.preventDefault();
+    setIsBusy(true);
+    setError(null);
+    try {
+      await api.issueCarePlan({
+        customerName: form.customerName.trim(),
+        customerContact: form.customerContact.trim(),
+        planName: form.planName.trim(),
+        covers: form.covers.trim(),
+        amountPerCycle: Number(form.amountPerCycle),
+        billingIntervalDays: Number(form.billingIntervalDays),
+      });
+      setForm(EMPTY_CARE_PLAN_FORM);
+      await loadPlans();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not issue the care plan.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleRenew(planId) {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await api.renewCarePlan(planId);
+      await loadPlans();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not renew this plan.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  const isFormValid =
+    form.customerName.trim() &&
+    form.planName.trim() &&
+    form.covers.trim() &&
+    Number(form.amountPerCycle) > 0;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      <form
+        onSubmit={handleIssue}
+        className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:p-5"
+      >
+        <p className="text-sm font-medium">Sign up a device Care Plan</p>
+        <p className="text-xs text-muted-foreground">
+          A recurring protection/AMC subscription tied to a device. A lapsed
+          renewal becomes a recovery case automatically, worked through a
+          smart day-0/day-2/day-5 mandate retry sequence — exhausting it
+          cancels the plan.
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            placeholder="Customer name"
+            value={form.customerName}
+            onChange={(e) => updateField("customerName", e.target.value)}
+            required
+          />
+          <Input
+            placeholder="Contact (email or phone, optional)"
+            value={form.customerContact}
+            onChange={(e) => updateField("customerContact", e.target.value)}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            placeholder="Plan name (e.g. Laptop Care+)"
+            value={form.planName}
+            onChange={(e) => updateField("planName", e.target.value)}
+            required
+          />
+          <Input
+            placeholder="Covers (e.g. HP Pavilion 14)"
+            value={form.covers}
+            onChange={(e) => updateField("covers", e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Input
+            type="number"
+            min="1"
+            placeholder="Amount / cycle (₹)"
+            value={form.amountPerCycle}
+            onChange={(e) => updateField("amountPerCycle", e.target.value)}
+            required
+          />
+          <select
+            value={form.billingIntervalDays}
+            onChange={(e) => updateField("billingIntervalDays", e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="30">Monthly</option>
+            <option value="90">Quarterly</option>
+            <option value="365">Yearly</option>
+          </select>
+          <Button type="submit" disabled={isBusy || !isFormValid} className="col-span-2 gap-1.5 sm:col-span-1">
+            <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            Sign up
+          </Button>
+        </div>
+      </form>
+
+      <div className="flex flex-col gap-3">
+        {plans.length === 0 && (
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-14 text-center">
+            <ShieldCheck className="h-8 w-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
+            <p className="max-w-sm text-sm text-muted-foreground">
+              No care plans yet — sign one up above to start tracking a
+              recurring device protection subscription.
+            </p>
+          </div>
+        )}
+
+        {plans.map((plan) => {
+          const statusKey =
+            plan.status === "cancelled" ? "cancelled" : plan.is_renewal_due ? "due" : "active";
+          const meta = CARE_PLAN_STATUS_META[statusKey];
+
+          return (
+            <div key={plan.id} className="rounded-lg border border-border bg-card p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">{plan.plan_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {plan.customer_name} · covers {plan.covers}
+                  </p>
+                </div>
+                <span className="text-sm font-medium tabular-nums">
+                  ₹{plan.amount_per_cycle.toLocaleString("en-IN")}/cycle
+                </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <Badge variant={meta.variant} className="text-[10px]">
+                  {meta.label}
+                </Badge>
+                <span>Next billing {new Date(plan.next_billing_at).toLocaleDateString("en-IN")}</span>
+                <span className="font-mono">{plan.mandate_id}</span>
+              </div>
+
+              {plan.status === "active" && (
+                <div className="mt-3 border-t border-border pt-3">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleRenew(plan.id)}
+                    disabled={isBusy}
+                  >
+                    Renew now
                   </Button>
                 </div>
               )}

@@ -8,6 +8,7 @@ from app.agents.llm_provider import AIProviderError, LLMProvider, get_llm_provid
 from app.agents.recovery_prompts import build_case_context_message, build_diagnosis_prompt
 from app.config.settings import settings
 from app.policies.recovery_policy import ROOT_CAUSES, decide_next_action
+from app.repositories.care_plan_repository import CarePlanRepository
 from app.repositories.payment_repository import PaymentRepository
 from app.repositories.receivable_repository import ReceivableRepository
 from app.repositories.recovery_repository import RecoveryRepository
@@ -36,13 +37,14 @@ class RecoveryService:
         self.payment_repo = PaymentRepository(db)
         self.transaction_repo = TransactionRepository(db)
         self.receivable_repo = ReceivableRepository(db)
+        self.care_plan_repo = CarePlanRepository(db)
         self.llm_provider = llm_provider or get_llm_provider()
 
     def scan(self) -> dict:
         """Detection pass: turns failed payments, stale (never approved or
-        rejected) proposals, and overdue B2B invoices into RecoveryCases.
-        Deterministic — no LLM involved in deciding what counts as
-        at-risk revenue."""
+        rejected) proposals, overdue B2B invoices, and lapsed care-plan
+        renewals into RecoveryCases. Deterministic — no LLM involved in
+        deciding what counts as at-risk revenue."""
         detected = 0
         now = datetime.now(timezone.utc)
 
@@ -90,6 +92,20 @@ class RecoveryService:
             )
             detected += 1
 
+        for plan in self.care_plan_repo.get_due_active(now):
+            if self.repo.has_open_case_for_plan(plan.id):
+                continue
+            self.repo.create_case(
+                source_type="subscription_renewal_failed",
+                payment_id=None,
+                proposal_id=None,
+                cart_id=None,
+                session_id=None,
+                amount_at_risk=float(plan.amount_per_cycle),
+                plan_id=plan.id,
+            )
+            detected += 1
+
         return {"cases_detected": detected}
 
     async def run_batch(self, tone: str = "standard") -> RecoveryBatchResult:
@@ -103,6 +119,10 @@ class RecoveryService:
 
             if decision.new_status == "expired":
                 self.repo.expire_case(case, decision.reason)
+                if case.source_type == "subscription_renewal_failed" and case.plan_id:
+                    plan = self.care_plan_repo.get_by_id(case.plan_id)
+                    if plan and plan.status == "active":
+                        self.care_plan_repo.cancel(plan)
                 stopped += 1
                 continue
             if decision.new_status == "stopped":
@@ -163,6 +183,13 @@ class RecoveryService:
                 f"₹{float(case.amount_at_risk):,.2f} is now overdue. Please "
                 "arrange payment or contact our accounts team."
             )
+        if case.source_type == "subscription_renewal_failed":
+            plan = self.care_plan_repo.get_by_id(case.plan_id) if case.plan_id else None
+            plan_name = plan.plan_name if plan else "your Care Plan"
+            return (
+                f"We couldn't renew {plan_name} (₹{float(case.amount_at_risk):,.2f}). "
+                "Please update your payment method to keep your plan active."
+            )
         return (
             f"Your order for ₹{float(case.amount_at_risk):,.2f} is still "
             "waiting — you can finish checkout anytime from your cart."
@@ -177,6 +204,8 @@ class RecoveryService:
             return "checkout_abandoned"
         if case.source_type == "overdue_invoice":
             return "invoice_overdue"
+        if case.source_type == "subscription_renewal_failed":
+            return "renewal_failed"
         if case.payment_id:
             payment = self.transaction_repo.get_by_id(case.payment_id)
             if payment and payment.failure_reason and "signature" in payment.failure_reason.lower():
@@ -186,6 +215,8 @@ class RecoveryService:
     def _build_case_context(self, case) -> dict:
         if case.source_type == "overdue_invoice":
             return self._build_invoice_context(case)
+        if case.source_type == "subscription_renewal_failed":
+            return self._build_subscription_context(case)
 
         proposal = self.payment_repo.get_by_id(case.proposal_id) if case.proposal_id else None
         items = []
@@ -229,6 +260,28 @@ class RecoveryService:
             "description": invoice.description,
             "due_date": invoice.due_at.date().isoformat(),
             "days_overdue": days_overdue,
+            "source_type": case.source_type,
+            "attempts_so_far": case.attempts,
+        }
+
+    def _build_subscription_context(self, case) -> dict:
+        plan = self.care_plan_repo.get_by_id(case.plan_id) if case.plan_id else None
+        if plan is None:
+            return {
+                "amount_at_risk_inr": float(case.amount_at_risk),
+                "source_type": case.source_type,
+                "attempts_so_far": case.attempts,
+            }
+
+        now = datetime.now(timezone.utc)
+        days_since_due = max((now - plan.next_billing_at).days, 0)
+        return {
+            "amount_at_risk_inr": float(plan.amount_per_cycle),
+            "plan_name": plan.plan_name,
+            "covers": plan.covers,
+            "customer_name": plan.customer_name,
+            "days_since_renewal_due": days_since_due,
+            "retry_attempt_of": f"{case.attempts + 1} of 3",
             "source_type": case.source_type,
             "attempts_so_far": case.attempts,
         }
@@ -348,6 +401,7 @@ class RecoveryService:
             payment_id=case.payment_id,
             proposal_id=case.proposal_id,
             invoice_id=case.invoice_id,
+            plan_id=case.plan_id,
             cart_id=case.cart_id,
             session_id=case.session_id,
             amount_at_risk=float(case.amount_at_risk),

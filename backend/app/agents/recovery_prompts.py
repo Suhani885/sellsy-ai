@@ -5,7 +5,7 @@ Respond with ONLY a single JSON object (no markdown, no code fences, no text
 outside the JSON) matching exactly this shape:
 
 {
-  "root_cause": "<one of: card_declined, insufficient_funds, gateway_error, signature_mismatch, checkout_abandoned, invoice_overdue, unknown>",
+  "root_cause": "<one of: card_declined, insufficient_funds, gateway_error, signature_mismatch, checkout_abandoned, invoice_overdue, renewal_failed, unknown>",
   "message": "<the recovery message, under 320 characters>"
 }
 
@@ -66,9 +66,39 @@ RECEIVABLE_TONE_INSTRUCTIONS = {
 }
 
 
+SUBSCRIPTION_TONE_INSTRUCTIONS = {
+    "hinglish": (
+        "Write the renewal-payment message in warm, casual Hinglish "
+        "(Hindi-English code-mixed, Latin script) — the way a support "
+        "agent would text a subscriber whose card on file didn't go "
+        "through. Reassure them the plan is still theirs to keep active. "
+        "One clear call to action: update the payment method or retry."
+    ),
+    "voice_hinglish": (
+        "Write this as a short, friendly spoken phone script in Hinglish "
+        "(Hindi-English code-mixed, Latin script) that a subscriptions "
+        "support agent would read to a customer whose auto-renewal "
+        "failed. Open with a brief greeting, name the plan, use short "
+        "natural sentences, never include a link, and close with a clear "
+        "spoken next step. No emoji, no markdown."
+    ),
+    "standard": (
+        "Write the renewal-payment message in plain, professional "
+        "English — brief and reassuring, not alarming. One clear call to "
+        "action: update the payment method on file or retry the charge."
+    ),
+}
+
+
 def build_diagnosis_prompt(tone: str, known_root_cause: str | None) -> str:
     is_receivable = known_root_cause == "invoice_overdue"
-    tone_map = RECEIVABLE_TONE_INSTRUCTIONS if is_receivable else CONSUMER_TONE_INSTRUCTIONS
+    is_subscription = known_root_cause == "renewal_failed"
+    if is_subscription:
+        tone_map = SUBSCRIPTION_TONE_INSTRUCTIONS
+    elif is_receivable:
+        tone_map = RECEIVABLE_TONE_INSTRUCTIONS
+    else:
+        tone_map = CONSUMER_TONE_INSTRUCTIONS
     tone_instruction = tone_map.get(tone, tone_map["standard"])
 
     if known_root_cause:
@@ -82,7 +112,16 @@ def build_diagnosis_prompt(tone: str, known_root_cause: str | None) -> str:
             "one of the fixed categories."
         )
 
-    if is_receivable:
+    if is_subscription:
+        role = """You are a subscriptions-recovery assistant for Sellsy AI, an
+online electronics merchant that also sells recurring device Care Plans
+(protection/AMC subscriptions). A plan's auto-renewal charge didn't go
+through by its billing date and you are drafting a message asking the
+customer to fix their payment method or retry, so the plan doesn't lapse.
+You are advisory only — you never charge anything, change the plan amount,
+or contact the customer directly; the backend decides whether and when to
+send whatever "message" you draft, after validating it."""
+    elif is_receivable:
         role = """You are a B2B receivables assistant for Sellsy AI, an online
 electronics merchant that also sells in bulk to business customers on
 invoice/credit terms. An invoice has gone past its due date and you are
