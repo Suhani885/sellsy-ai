@@ -58,6 +58,12 @@ tracked `RecoveryCase`, not a silent loss.
    or a renewed Care Plan flips the case to `recovered` with the real
    amount — never bypassing the guardrail → approve → verify chain.
 
+Every **Run recovery batch** click surfaces a **batch run report**:
+cases nudged vs. escalated vs. stopped/expired, the ₹ amount actioned
+this run (broken down by revenue motion), and a per-case list — not
+just a silent database update, but the measured, audit-ready result of
+one batch.
+
 **Try it** (after the catalog is seeded):
 ```bash
 python -m app.seed.seed_recovery_scenarios   # demo failed/abandoned cases

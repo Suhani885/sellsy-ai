@@ -42,10 +42,25 @@ class RunBatchRequest(BaseModel):
     tone: str = Field(default="standard", pattern="^(standard|hinglish|voice_hinglish)$")
 
 
+class RecoveryBatchCaseResult(BaseModel):
+    case_id: int
+    source_type: str
+    label: str
+    action: str
+    amount_at_risk: float
+    reason: str | None = None
+
+
 class RecoveryBatchResult(BaseModel):
     cases_detected: int
     cases_actioned: int
     cases_stopped: int
+    cases_nudged: int
+    cases_escalated: int
+    cases_expired: int
+    amount_actioned: float
+    amount_at_risk_by_source: dict[str, float]
+    cases: list[RecoveryBatchCaseResult]
 
 
 class PromiseToPayRequest(BaseModel):
@@ -59,6 +74,8 @@ class RecoverySummaryOut(BaseModel):
     recovered_cases: int
     recovered_amount: float
     recovery_rate: float
+    amount_at_risk_by_source: dict[str, float]
+    recovered_amount_by_source: dict[str, float]
 
     promises_made: int
     promises_pending: int

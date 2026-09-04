@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Volume2,
   VolumeX,
+  X,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -62,6 +63,20 @@ const ROOT_CAUSE_LABELS = {
   unknown: "Unknown",
 };
 
+const BATCH_ACTION_LABELS = {
+  nudge: "Nudged",
+  final_notice: "Escalated",
+  expired: "Expired",
+  stopped: "Stopped",
+};
+
+const BATCH_ACTION_BADGE_VARIANT = {
+  nudge: "success",
+  final_notice: "destructive",
+  expired: "destructive",
+  stopped: "secondary",
+};
+
 const OPEN_STATUSES = ["detected", "attempting"];
 const TONES = [
   { value: "standard", label: "Standard" },
@@ -70,10 +85,30 @@ const TONES = [
 ];
 
 const TABS = [
-  { value: "cases", label: "Recovery cases" },
-  { value: "receivables", label: "Receivables" },
-  { value: "careplans", label: "Care plans" },
-  { value: "promises", label: "Promise tracker" },
+  {
+    value: "cases",
+    label: "Recovery cases",
+    description:
+      "Every at-risk sale in one queue — failed payments, abandoned checkouts, overdue invoices, and lapsed renewals — with a drafted nudge and a deterministic escalate/stop decision for each.",
+  },
+  {
+    value: "receivables",
+    label: "Receivables",
+    description:
+      "B2B invoices sold on credit terms. An overdue one feeds the same recovery pipeline as a chaser — not a separate system.",
+  },
+  {
+    value: "careplans",
+    label: "Care plans",
+    description:
+      "Recurring device-protection subscriptions. A lapsed renewal runs a front-loaded mandate retry schedule, and cancels the plan for real once it's exhausted.",
+  },
+  {
+    value: "promises",
+    label: "Promise tracker",
+    description:
+      "\"Remind me in N days\" pauses a case's escalation ladder — this tracks whether that promise was actually kept, kept late, or broken.",
+  },
 ];
 
 const PROMISE_STATUS_META = {
@@ -116,6 +151,10 @@ export default function RecoveryPage() {
         ))}
       </div>
 
+      <p className="max-w-2xl text-sm text-muted-foreground">
+        {TABS.find((t) => t.value === activeTab)?.description}
+      </p>
+
       {activeTab === "cases" && <CasesPanel />}
       {activeTab === "receivables" && <ReceivablesPanel />}
       {activeTab === "careplans" && <CarePlansPanel />}
@@ -134,6 +173,7 @@ function CasesPanel() {
   const [error, setError] = useState(null);
   const [promiseDrafts, setPromiseDrafts] = useState({});
   const [playingActionId, setPlayingActionId] = useState(null);
+  const [batchReport, setBatchReport] = useState(null);
 
   function handleTogglePlay(action) {
     if (playingActionId === action.id) {
@@ -184,7 +224,8 @@ function CasesPanel() {
 
   async function handleRunBatch() {
     await withBusy(async () => {
-      await api.runRecoveryBatch(tone);
+      const result = await api.runRecoveryBatch(tone);
+      setBatchReport(result);
       await loadAll();
     });
   }
@@ -259,6 +300,109 @@ function CasesPanel() {
               tone="success"
             />
           </StatGrid>
+
+          {Object.keys(summary.recovered_amount_by_source).length > 1 && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-medium uppercase tracking-wide">By revenue motion</span>
+              {Object.entries(summary.recovered_amount_by_source).map(([src, amt]) => (
+                <Badge key={src} variant="secondary" className="text-[10px]">
+                  {(SOURCE_META[src] || { label: src }).label}: ₹{amt.toLocaleString("en-IN")}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {batchReport && (
+        <div className="rounded-lg border border-primary/40 bg-card p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-1.5 text-primary">
+              <Zap className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              <span className="text-sm font-medium">Batch run report</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBatchReport(null)}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="Dismiss batch report"
+            >
+              <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
+
+          <StatGrid columns={4} className="mt-3">
+            <StatTile
+              icon={RadarIcon}
+              label="Scanned"
+              value={batchReport.cases_detected}
+              sublabel="new cases detected"
+            />
+            <StatTile icon={BadgeCheck} label="Nudged" value={batchReport.cases_nudged} tone="success" />
+            <StatTile
+              icon={AlertTriangle}
+              label="Escalated"
+              value={batchReport.cases_escalated}
+              tone={batchReport.cases_escalated > 0 ? "destructive" : "default"}
+            />
+            <StatTile
+              icon={ShieldCheck}
+              label="Stopped / expired"
+              value={batchReport.cases_stopped + batchReport.cases_expired}
+              sublabel="compliant stopping rules"
+            />
+          </StatGrid>
+
+          <p className="mt-3 text-sm text-muted-foreground">
+            ₹{batchReport.amount_actioned.toLocaleString("en-IN")} in at-risk revenue actioned
+            this run
+            {Object.keys(batchReport.amount_at_risk_by_source).length > 0 && (
+              <>
+                {" — "}
+                {Object.entries(batchReport.amount_at_risk_by_source)
+                  .map(
+                    ([src, amt]) =>
+                      `${(SOURCE_META[src] || { label: src }).label}: ₹${amt.toLocaleString("en-IN")}`
+                  )
+                  .join(", ")}
+              </>
+            )}
+          </p>
+
+          {batchReport.cases.length > 0 && (
+            <div className="mt-4 flex flex-col gap-1.5 border-t border-border pt-3">
+              {batchReport.cases.map((c) => {
+                const source = SOURCE_META[c.source_type] || { label: c.source_type, icon: AlertTriangle };
+                const SourceIcon = source.icon;
+                return (
+                  <div
+                    key={c.case_id}
+                    className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                  >
+                    <span className="flex items-center gap-1.5 text-foreground">
+                      <SourceIcon
+                        className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                        strokeWidth={2}
+                        aria-hidden="true"
+                      />
+                      {c.label}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Badge
+                        variant={BATCH_ACTION_BADGE_VARIANT[c.action] || "secondary"}
+                        className="text-[10px]"
+                      >
+                        {BATCH_ACTION_LABELS[c.action] || c.action}
+                      </Badge>
+                      <span className="tabular-nums text-muted-foreground">
+                        ₹{c.amount_at_risk.toLocaleString("en-IN")}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

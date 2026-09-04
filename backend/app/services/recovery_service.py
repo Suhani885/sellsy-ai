@@ -15,6 +15,7 @@ from app.repositories.recovery_repository import RecoveryRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.schemas.recovery import (
     RecoveryActionOut,
+    RecoveryBatchCaseResult,
     RecoveryBatchResult,
     RecoveryCaseDetailOut,
     RecoveryCaseOut,
@@ -111,8 +112,13 @@ class RecoveryService:
     async def run_batch(self, tone: str = "standard") -> RecoveryBatchResult:
         scan_result = self.scan()
         now = datetime.now(timezone.utc)
-        actioned = 0
+        nudged = 0
+        escalated = 0
+        expired = 0
         stopped = 0
+        amount_actioned = 0.0
+        amount_by_source: dict[str, float] = {}
+        case_results: list[RecoveryBatchCaseResult] = []
 
         for case in self.repo.get_open_cases():
             decision = decide_next_action(case, now)
@@ -123,11 +129,13 @@ class RecoveryService:
                     plan = self.care_plan_repo.get_by_id(case.plan_id)
                     if plan and plan.status == "active":
                         self.care_plan_repo.cancel(plan)
-                stopped += 1
+                expired += 1
+                case_results.append(self._batch_case_result(case, "expired", decision.reason))
                 continue
             if decision.new_status == "stopped":
                 self.repo.stop_case(case, decision.reason)
                 stopped += 1
+                case_results.append(self._batch_case_result(case, "stopped", decision.reason))
                 continue
             if decision.action is None:
                 continue  # waiting on cooldown or a promised retry date
@@ -138,13 +146,49 @@ class RecoveryService:
             self.repo.record_attempt(
                 case, action_type=decision.action, tone=tone, message=diagnosis.message
             )
-            actioned += 1
+            if decision.action == "final_notice":
+                escalated += 1
+            else:
+                nudged += 1
+            amount = float(case.amount_at_risk)
+            amount_actioned += amount
+            amount_by_source[case.source_type] = amount_by_source.get(case.source_type, 0.0) + amount
+            case_results.append(self._batch_case_result(case, decision.action, None))
 
         return RecoveryBatchResult(
             cases_detected=scan_result["cases_detected"],
-            cases_actioned=actioned,
+            cases_actioned=nudged + escalated,
             cases_stopped=stopped,
+            cases_nudged=nudged,
+            cases_escalated=escalated,
+            cases_expired=expired,
+            amount_actioned=round(amount_actioned, 2),
+            amount_at_risk_by_source={k: round(v, 2) for k, v in amount_by_source.items()},
+            cases=case_results,
         )
+
+    def _batch_case_result(self, case, action: str, reason: str | None) -> RecoveryBatchCaseResult:
+        return RecoveryBatchCaseResult(
+            case_id=case.id,
+            source_type=case.source_type,
+            label=self._case_label(case),
+            action=action,
+            amount_at_risk=float(case.amount_at_risk),
+            reason=reason,
+        )
+
+    def _case_label(self, case) -> str:
+        """A human-readable name for the batch report — reuses the same
+        invoice/plan lookups the diagnosis and fallback-message paths
+        already do, since there's no customer name on RecoveryCase itself
+        for consumer-side cases."""
+        if case.source_type == "overdue_invoice":
+            invoice = self.receivable_repo.get_by_id(case.invoice_id) if case.invoice_id else None
+            return invoice.customer_name if invoice else f"Invoice #{case.invoice_id}"
+        if case.source_type == "subscription_renewal_failed":
+            plan = self.care_plan_repo.get_by_id(case.plan_id) if case.plan_id else None
+            return plan.customer_name if plan else f"Care Plan #{case.plan_id}"
+        return f"Checkout #{case.proposal_id}" if case.proposal_id else f"Case #{case.id}"
 
     async def _diagnose_and_draft(self, case, tone: str) -> RecoveryDiagnosisRaw:
         known_cause = self._deterministic_root_cause(case)
@@ -347,6 +391,17 @@ class RecoveryService:
         recovered_amount = sum(float(c.recovered_amount or 0) for c in recovered)
         recovery_rate = round(len(recovered) / len(resolved), 4) if resolved else 0.0
 
+        amount_at_risk_by_source: dict[str, float] = {}
+        for c in open_cases:
+            amount_at_risk_by_source[c.source_type] = (
+                amount_at_risk_by_source.get(c.source_type, 0.0) + float(c.amount_at_risk)
+            )
+        recovered_amount_by_source: dict[str, float] = {}
+        for c in recovered:
+            recovered_amount_by_source[c.source_type] = (
+                recovered_amount_by_source.get(c.source_type, 0.0) + float(c.recovered_amount or 0)
+            )
+
         now = datetime.now(timezone.utc)
         promised = [c for c in cases if c.promised_retry_at is not None]
         statuses = [self._promise_status(c, now) for c in promised]
@@ -365,6 +420,10 @@ class RecoveryService:
             recovered_cases=len(recovered),
             recovered_amount=round(recovered_amount, 2),
             recovery_rate=recovery_rate,
+            amount_at_risk_by_source={k: round(v, 2) for k, v in amount_at_risk_by_source.items()},
+            recovered_amount_by_source={
+                k: round(v, 2) for k, v in recovered_amount_by_source.items()
+            },
             promises_made=len(promised),
             promises_pending=pending,
             promises_overdue=overdue,

@@ -1,6 +1,15 @@
 import Link from "next/link";
-import { MessageSquareText, PackageSearch, ShieldCheck } from "lucide-react";
+import {
+  BadgeCheck,
+  IndianRupee,
+  LifeBuoy,
+  MessageSquareText,
+  PackageSearch,
+  ShieldCheck,
+  TrendingUp,
+} from "lucide-react";
 
+import { StatGrid, StatTile } from "@/components/stat-tile";
 import { api, API_BASE_URL } from "@/lib/api";
 
 const EXAMPLE_PROMPTS = [
@@ -40,6 +49,14 @@ export default async function HomePage() {
       : "Backend reachable but reporting issues";
   } catch {
     statusLabel = `Can't reach the backend at ${API_BASE_URL}`;
+  }
+
+  let recoverySummary = null;
+  try {
+    recoverySummary = await api.getRecoverySummary();
+  } catch {
+    // Recovery stats are a bonus on the homepage, not load-bearing —
+    // the section below just hides itself if this fails.
   }
 
   return (
@@ -92,6 +109,53 @@ export default async function HomePage() {
               <p className="text-sm text-muted-foreground">{step.body}</p>
             </div>
           ))}
+        </div>
+
+        <div className="flex flex-col gap-6 border-t border-border pt-12 sm:pt-16">
+          <div className="flex flex-col gap-3">
+            <span className="w-fit rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              Also built in — revenue recovery
+            </span>
+            <h2 className="max-w-lg text-balance text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+              When a sale doesn&rsquo;t go through, this doesn&rsquo;t give up on it.
+            </h2>
+            <p className="max-w-md text-muted-foreground">
+              A declined card, an abandoned checkout, an overdue B2B invoice, a lapsed Care
+              Plan renewal — one bounded pipeline detects it, diagnoses why, drafts a
+              tracked recovery nudge, and knows when to stop. Nothing here is silent
+              revenue loss.
+            </p>
+          </div>
+
+          {recoverySummary && recoverySummary.total_cases > 0 && (
+            <StatGrid columns={3}>
+              <StatTile
+                icon={IndianRupee}
+                label="Recovered so far"
+                value={`₹${recoverySummary.recovered_amount.toLocaleString("en-IN")}`}
+                tone="success"
+              />
+              <StatTile
+                icon={BadgeCheck}
+                label="Cases recovered"
+                value={recoverySummary.recovered_cases}
+                tone="success"
+              />
+              <StatTile
+                icon={TrendingUp}
+                label="Recovery rate"
+                value={`${Math.round(recoverySummary.recovery_rate * 100)}%`}
+              />
+            </StatGrid>
+          )}
+
+          <Link
+            href="/recovery"
+            className="flex w-fit items-center gap-2 rounded-md border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-primary hover:bg-primary/10"
+          >
+            <LifeBuoy className="h-4 w-4 text-primary" strokeWidth={2} aria-hidden="true" />
+            Open the recovery engine
+          </Link>
         </div>
       </div>
 
